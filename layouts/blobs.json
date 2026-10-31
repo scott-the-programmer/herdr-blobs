@@ -1,0 +1,84 @@
+{
+  "id": "root",
+  "type": "column",
+  "theme": "moss",
+  "ui_font": "Geist",
+  "font": "JetBrains Mono",
+  "font_size": 13,
+  "background": "#101913",
+  "colors": {
+    "background": "#131c17",
+    "foreground": "#edf0e5",
+    "border": "#303b34",
+    "accent": "#b5d97b"
+  },
+  "preview": "layouts/blobs.png",
+  "gap": 0,
+  "children": [
+    {
+      "id": "garden-header",
+      "type": "block",
+      "size": {
+        "px": 58
+      },
+      "content": {
+        "mod": "blob-garden",
+        "props": {
+          "role": "header"
+        }
+      }
+    },
+    {
+      "id": "garden-board",
+      "type": "block",
+      "size": {
+        "weight": 1
+      },
+      "min": 220,
+      "content": {
+        "mod": "blob-garden",
+        "props": {
+          "role": "board"
+        }
+      }
+    },
+    {
+      "id": "session",
+      "type": "column",
+      "size": {
+        "weight": 1
+      },
+      "min": 180,
+      "border": {
+        "width": 1,
+        "color": "#303b34"
+      },
+      "children": [
+        {
+          "id": "session-label",
+          "type": "block",
+          "size": {
+            "px": 44
+          },
+          "content": {
+            "mod": "blob-garden",
+            "props": {
+              "role": "terminal-label"
+            }
+          }
+        },
+        {
+          "id": "session-terminal",
+          "type": "block",
+          "content": {
+            "agent": "focused"
+          },
+          "padding": [
+            6,
+            14
+          ]
+        }
+      ]
+    }
+  ]
+}
