@@ -61,17 +61,14 @@
             "px": 44
           },
           "content": {
-            "mod": "blob-garden",
-            "props": {
-              "role": "terminal-label"
-            }
+            "mod": "blob-tabs"
           }
         },
         {
           "id": "session-terminal",
           "type": "block",
           "content": {
-            "agent": "focused"
+            "tab": "active"
           },
           "padding": [
             6,
