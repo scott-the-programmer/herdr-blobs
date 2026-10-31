@@ -1,6 +1,6 @@
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, terminals, focused, run, props, setAgentOrder } from "herdr";
+import { agents, terminals, focused, run, props, setAgentOrder, openOverlay } from "herdr";
 
 const C = { ink: "#edf0e5", muted: "#9da99c", line: "#303b34", ground: "#101913", working: "#b5d97b", blocked: "#f2b477", done: "#92cfc3", idle: "#a6abc3" };
 const WORD = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
@@ -61,6 +61,10 @@ export default class BlobGarden extends View {
       .on_click(action).child(label);
   }
 
+  newAgent() {
+    openOverlay({ mod: "new-menu", kind: "popup", width: 320, height: 460 });
+  }
+
   select(address) {
     run("agent.focus", { terminal: address });
     run("pane.focus", { terminal: address });
@@ -103,7 +107,9 @@ export default class BlobGarden extends View {
         .child(div().size(11).rounded(6).bg(C.working))
         .child(div().text_size(17).font_semibold().text_color(C.ink).child("blob garden"))
         .child(div().text_size(11).text_color(C.muted).child("/  agents, growing together")))
-      .child(this.button("palette", "Commands", () => run("app.palette")));
+      .child(h_flex().gap(8)
+        .child(this.button("new-agent", "+ New agent", () => this.newAgent()))
+        .child(this.button("palette", "Commands", () => run("app.palette"))));
     if (role === "terminal-label") return h_flex().size_full().px(20).items_center().justify_between()
       .child(h_flex().gap(10).items_center()
         .child(div().size(6).rounded(3).bg(C[selected?.status] || C.idle))
@@ -129,7 +135,7 @@ export default class BlobGarden extends View {
         .when(list.length === 0, el => el.child(v_flex().h(210).items_center().justify_center().gap(12)
           .child(div().text_size(20).text_color(C.ink).child("Room to grow"))
           .child(div().text_size(13).text_color(C.muted).child("Start a status-reporting agent in any space. Its blob appears here."))
-          .child(this.button("start-menu", "Open commands", () => run("app.palette"))))))
+          .child(this.button("start-menu", "+ New agent", () => this.newAgent())))))
       .child(h_flex().h(42).flex_none().items_center().justify_between()
         .child(h_flex().gap(18).children(Object.keys(WORD).map(status => h_flex().gap(6).items_center()
           .child(div().size(6).rounded(3).bg(C[status]))

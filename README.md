@@ -8,7 +8,7 @@ Read [RECIPE.md](RECIPE.md) for the complete rebuild brief, growth rules, and li
 
 ## Install
 
-Requires Herdr with native mod and focused-agent block support. The mod uses no network, external commands, or transcript reads.
+Requires Herdr with native mod and focused-agent block support. The garden uses no network or transcript reads. Its New agent button uses Herdr's shipped launcher to detect and start installed agents.
 
 Copy `mods/blob-garden/` into `~/.config/herdr-app/mods/`, and copy both files from `layouts/` into `~/.config/herdr-app/layouts/`. If either name already exists, rename this layout and mod and update their references before copying.
 
@@ -20,6 +20,6 @@ herdr-app do layout.switch '{"name":"blobs"}'
 herdr-app status
 ```
 
-Existing keyboard bindings stay in place. Use the Commands button for the palette, Previous/Next for agent navigation, and the divider above the session to resize it. `ctrl-shift-l` switches layouts.
+Existing keyboard bindings stay in place. Use New agent to choose and launch an installed agent in your current space. Use Commands for the palette, Previous/Next for agent navigation, and the divider above the session to resize it. `ctrl-shift-l` switches layouts.
 
 Growth counts sampled working time while the layout is loaded. It persists locally and caps the displayed blob width at 190px. It does not measure tokens or transcript length.
