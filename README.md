@@ -46,33 +46,11 @@ Open [Herdr](https://herdr.dev/) and tell your agent:
 Read ~/.config/herdr-app/AGENTS.md, then install and switch to the Blobs layout from https://github.com/scott-the-programmer/herdr-blobs. Read the repository files before installing, merge its layout-specific keys, and preserve my existing layouts, mods, and keybindings.
 ```
 
-## Context usage and blob types
-
-The garden checks Codex context counters every 10 seconds. A Python helper reads Codex's local state database and token-count records on each agent's machine. It returns counters, not session messages. The mods make no network requests. The launcher detects installed agents and starts programs through Herdr.
-
-Blob size follows the fraction of context in use. Diameter ranges from 81px to 144px before fitting and zoom. Unknown context uses the minimum size. Dragged positions and pan stay in mod-local storage.
-
-Each agent address determines a blob type. Common types are Pebble at 30%, Sprout at 28%, and Ripple at 27%. Rare types are Ember and Frost at 7% each. Cosmic is ultra rare at 1%. Pebble, Sprout, Ripple, and Ember have rounded shapes; Frost and Cosmic are five-point stars. Each blob has its agent program's logo on its forehead. Rare types have a colored outline. Body color shows agent state.
-
-## Demo
-
-Run `python3 demo/workspace.py` while Herdr is open. It creates eight scripted sessions spread across the garden, with all six blob types, varied context usage, and 60% garden zoom. It runs no AI agents or API calls. Close the Blobs demo space when finished.
-
-To show real coding terminals, run `python3 demo/workspace.py --live --count 6`. It launches six interactive Codex agents with the configured model and a read-only sandbox. Each reads the repository and reports on its named task. Live mode uses your Codex account. Status comes from the agents; blob type, context usage, and positions use demo overrides. Agents stay open for follow-up input.
-
-Export demo settings with `python3 demo/workspace.py --dry-run`. Edit the JSON and pass it with `--config <file>`. The [demo-blobs skill](.agents/skills/demo-blobs/SKILL.md) covers setup, verification, and changes to an open demo.
-
 ## Recipe and discovery
 
 [RECIPE.md](RECIPE.md) is the rebuild brief for this layout, including workspace controls and known limits. Herdr discovery uses this recipe, the root `preview.png`, and the repository topic `herdr-layout`.
 
-## Development
-
-CI runs on pull requests, pushes to `main`, and manual dispatches. It checks
-JavaScript and Python syntax, validates layout and mod JSON, and runs both test
-suites on Linux and macOS with Node.js 24 and Python 3.14. No dependency install
-or Herdr instance is required. GitHub Actions dependencies use pinned commits;
-Dependabot checks for updates weekly.
+## Tests
 
 Run regression tests:
 
