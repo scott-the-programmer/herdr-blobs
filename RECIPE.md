@@ -31,7 +31,7 @@ Default permission mode uses the configured launch command unchanged. Codex also
 
 Folder defaults to the focused terminal's current directory, then the space folder. Browse is local-only; remote paths can be typed. Empty model and task fields keep agent defaults and start without an initial task.
 
-Poll Codex context counters every 10 seconds through `context.py`, using Python 3 on the terminal's machine. Match sessions by explicit thread or session label, or by a unique directory and title match in Codex's state database. Scan at most the last 8 MiB of the session log for a token-count record. Return only counters. If no unique match or valid counter exists, show "Context unknown" and use the minimum blob size. Body diameter updates immediately so camera zoom keeps bodies, faces, and labels in sync.
+Poll Codex context counters every 10 seconds through `codex.js`. It runs two `sh` scripts through Herdr's `exec` on the terminal's machine, using only `find`, `ls`, `head`, `tail`, and `grep`, and parses their output in the mod. The first lists rollout logs under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) modified in the last 30 days, newest first, with each log's `session_meta` line. Match sessions by explicit thread or session label against the session ID, or else take the newest log whose directory matches a terminal's, when no other unlabelled Codex terminal shares that directory. The second script scans at most the last 8 MiB of each matched log for the last token-count or compaction record. Used tokens are `last_token_usage.total_tokens` and the limit is `model_context_window`; a compaction with no later count reads as unknown. Return only counters. If no unique match or valid counter exists, show "Context unknown" and use the minimum blob size. Body diameter updates immediately so camera zoom keeps bodies, faces, and labels in sync.
 
 Blobs blink with native eye-height loops over 4200 to 6599ms. Body-only bobbing leaves labels steady: working moves 5px over 2000ms, blocked 3px over 3000ms, done 4px over 2800ms, idle 2px over 4800ms, before scale and a seeded period offset up to 699ms. Body bobbing pauses during gestures.
 
@@ -50,7 +50,7 @@ mods/blob-garden/main.js
 mods/blob-garden/geometry.js
 mods/blob-garden/types.js
 mods/blob-garden/context.js
-mods/blob-garden/context.py
+mods/blob-garden/codex.js
 mods/blob-garden/demo.js
 mods/blob-garden/positions.js
 mods/blob-workspace/mod.json
@@ -69,13 +69,12 @@ tests/launcher.test.mjs
 tests/geometry.test.mjs
 tests/types.test.mjs
 tests/context.test.mjs
-tests/context_reader_test.py
 tests/demo.test.mjs
-tests/demo_workspace_test.py
+tests/demo_workspace.test.mjs
 tests/positions.test.mjs
 tests/garden.test.mjs
 tests/workspace.test.mjs
-demo/workspace.py
+demo/workspace.mjs
 ```
 
 Use this layout tree, a moss root theme, Geist UI font, JetBrains Mono terminal font, and the explicit colors above:
@@ -136,7 +135,7 @@ Keep command construction in a pure options module. Recognize Codex and Claude b
 
 Default preserves configured argv. Explicit permission modes first remove conflicting permission flags, including separate and equals forms of valued options. An explicit model replaces existing model arguments with `--model <value>`. Keep argv as an array and pass folder and task as structured command arguments. Unsupported modes and absent agents must fail before starting a program. A task-field submit uses the same start action. Prevent double starts. Errors stay in the dialog.
 
-No bundled mod calls `fetch`. The garden reads its bundled Python helper, then runs it through Herdr to read Codex state and token-count records on each terminal's machine. The helper returns no session messages. Installed-agent detection and program launch use Herdr APIs. The launcher persists the selected agent in shared state under `blob-launcher.last-agent`, including selections made before cancelling. On reopening, restore it if installed; otherwise select the first installed agent.
+No bundled mod calls `fetch`. The garden runs shell commands through Herdr to read Codex session logs on each terminal's machine. Only session metadata lines and token-count records leave that machine, never session messages. Installed-agent detection and program launch use Herdr APIs. The launcher persists the selected agent in shared state under `blob-launcher.last-agent`, including selections made before cancelling. On reopening, restore it if installed; otherwise select the first installed agent.
 
 The launcher persists each agent's last launched mode and model under `blob-launcher.last-options.<agent-key>`. Save only after dispatching a valid launch, and restore only supported modes and string models. Folder and first task are not persisted.
 
@@ -168,7 +167,7 @@ Merge `keys.json` under `layout:blobs`: Ctrl+Shift+S selects Shell, F toggles Fi
 - Every mod must pass `herdr-app check`, but this only covers initial rendering. Inspect the loaded launcher after asynchronous installed-agent detection as well as all visible prop roles.
 - Active-tab terminal content fixes new shells being hidden behind an old focused agent. Pane-less descendants need explicit `terminal.show` after selecting their parent context.
 - Default means existing configuration, including any permission settings the person already chose. It is not a forced sandbox preset. YOLO is remembered when it was the last launched mode for that agent. Custom wrapper executables get no guessed flags. Remote or older agent versions must support the chosen flags; check the installed programs when adapting launch arguments.
-- Context counters currently come from Codex only and require Python 3 on the terminal's machine. Missing counters, ambiguous session matches, or read failures show "Context unknown". Size follows context usage and can shrink after compaction.
+- Context counters currently come from Codex only and need a POSIX shell on the terminal's machine. Two unlabelled Codex terminals in one directory both show "Context unknown"; label them with `codex.thread` to tell them apart. Missing counters, ambiguous session matches, or read failures show "Context unknown". Size follows context usage and can shrink after compaction.
 - Very narrow windows crowd header and dialog controls. Aim for at least 760 by 600 logical pixels, with enough height for the 660px dialog. The initial arrangement reserves label space and scales down to fit. Large lists render eagerly without virtualization.
 - At 100% zoom all cells scale to fit. Large counts in small panes make labels small; zoom in and pan or expand the garden to read them. Circle diameter caps at 144px before fitting and zoom. Blobs can be dragged to reposition them. There is no filtering, close-tab button, or arbitrary argument editor. Existing Herdr keys and palette remain available.
 - Install without overwriting names. Rename incoming mods and layout references if they already exist. Copy only source and assets, not generated type files, local settings, storage, credentials, or transcripts.
