@@ -89,7 +89,7 @@
                       "id": "blob-files",
                       "type": "block",
                       "content": {
-                        "mod": "files"
+                        "mod": "blob-files"
                       }
                     },
                     {
