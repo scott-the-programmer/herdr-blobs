@@ -106,3 +106,73 @@ test('reader rejects malformed records and never matches ambiguous directories',
   assert.deepEqual(sessions, [{ file: '/s/a.jsonl', id: ids[0], cwd: '/x' }]);
   assert.deepEqual(matchSessions([{ address: 't1', cwd: '/x' }, { address: 't2', cwd: '/x/' }], sessions), {});
 });
+
+const claudeSource = readFileSync(new URL('../mods/blob-garden/claude.js', import.meta.url), 'utf8');
+const claude = await import(`data:text/javascript,${encodeURIComponent(claudeSource)}`);
+
+const reply = (usage, extra = {}) => JSON.stringify({ parentUuid: null, isSidechain: false,
+  message: { model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'secret reply text' }],
+    usage: { input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0, ...usage,
+      iterations: [{ input_tokens: 999999 }] } },
+  type: 'assistant', timestamp: '2026-11-02T00:00:00Z', ...extra });
+const ask = text => JSON.stringify({ type: 'user', message: { role: 'user', content: text },
+  toolUseResult: { usage: { input_tokens: 777777 } } });
+const boundary = JSON.stringify({ isSidechain: false, type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted' });
+
+// A fake CLAUDE_CONFIG_DIR with sessions/<pid>.json and projects/<dir>/<session>.jsonl.
+function claudeFixture() {
+  const home = mkdtempSync(join(tmpdir(), 'blob-claude-'));
+  const session = (pid, id, lines, project = '-work-alpha') => {
+    mkdirSync(join(home, 'sessions'), { recursive: true });
+    writeFileSync(join(home, 'sessions', `${pid}.json`), JSON.stringify({ pid, sessionId: id, cwd: '/work/alpha' }));
+    mkdirSync(join(home, 'projects', project), { recursive: true });
+    const file = join(home, 'projects', project, `${id}.jsonl`);
+    if (lines) writeFileSync(file, lines.join('\n') + '\n');
+    return file;
+  };
+  const run = (script, args) => {
+    const result = spawnSync('sh', ['-c', script, 'sh', ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: home } });
+    return Promise.resolve({ code: result.status, stdout: result.stdout });
+  };
+  return { home, session, run, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+}
+
+test('claude reader finds the transcript by pid and returns only main-thread counters', async () => {
+  const { session, run, cleanup } = claudeFixture();
+  try {
+    session(101, ids[0], [ask('secret prompt'), reply({ input_tokens: 5, cache_creation_input_tokens: 1000, cache_read_input_tokens: 40000, output_tokens: 300 }),
+      reply({ input_tokens: 1, output_tokens: 1 }, { isSidechain: true }),
+      reply({ input_tokens: 0 }, { message: { model: '<synthetic>', usage: { input_tokens: 0 } } }), ask('more')]);
+    session(102, ids[1], [reply({ cache_read_input_tokens: 250000 })]);
+    session(103, ids[2], [reply({ cache_read_input_tokens: 9000 }, { message: { model: 'claude-sonnet-5-5[1m]', usage: { input_tokens: 1000 } } })]);
+    const result = await claude.readCounters([{ address: 't1', pid: 101 }, { address: 't2', pid: 102 },
+      { address: 't3', pid: 103 }, { address: 't4', pid: 104 }, { address: 't5' }], run);
+    assert.deepEqual(result, { t1: { used: 41305, limit: 200000 }, t2: { used: 250002, limit: 1000000 }, t3: { used: 1000, limit: 1000000 } });
+    const raw = (await run(claude.SCRIPT, ['101'])).stdout;
+    assert(!raw.includes('secret'), 'transcript text never leaves the machine');
+  } finally { cleanup(); }
+});
+
+test('claude reader follows compaction and reports unknown until the next reply', async () => {
+  const { session, run, cleanup } = claudeFixture();
+  try {
+    const file = session(101, ids[0], [reply({ cache_read_input_tokens: 180000 }), boundary]);
+    assert.deepEqual(await claude.readCounters([{ address: 't1', pid: 101 }], run), {});
+    writeFileSync(file, [reply({ cache_read_input_tokens: 180000 }), boundary, reply({ cache_read_input_tokens: 22000 })].join('\n') + '\n');
+    assert.deepEqual(await claude.readCounters([{ address: 't1', pid: 101 }], run), { t1: { used: 22002, limit: 200000 } });
+  } finally { cleanup(); }
+});
+
+test('claude reader skips ambiguous or malformed sessions and scans only the last 8 MiB', async () => {
+  const { home, session, run, cleanup } = claudeFixture();
+  try {
+    session(101, ids[0], [reply({ cache_read_input_tokens: 5000 })]);
+    session(101, ids[0], [reply({ cache_read_input_tokens: 6000 })], '-work-beta');
+    session(102, '../../etc', [reply({})]);
+    session(103, ids[2], [reply({ cache_read_input_tokens: 7000 }), ask('y'.repeat(9 * 1024 * 1024))]);
+    assert.deepEqual(await claude.readCounters([{ address: 't1', pid: 101 }, { address: 't2', pid: 102 }, { address: 't3', pid: 103 }], run), {});
+    assert.deepEqual(await claude.readCounters([{ address: 't1', pid: '1; touch /tmp/x' }], run), {});
+    rmSync(home, { recursive: true, force: true });
+    assert.deepEqual(await claude.readCounters([{ address: 't1', pid: 101 }], run), {});
+  } finally { cleanup(); }
+});

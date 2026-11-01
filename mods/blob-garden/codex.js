@@ -87,6 +87,7 @@ export function parseCounts(stdout, matches) {
 
 // Read counters for every target on one machine. `run(script, args)` resolves with { code, stdout }.
 export async function readCounters(targets, run) {
+  if (!targets.length) return {};
   const listing = await run(LIST_SCRIPT, []);
   if (listing.code !== 0) return {};
   const matches = matchSessions(targets, parseListing(listing.stdout));
