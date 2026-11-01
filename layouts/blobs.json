@@ -51,51 +51,6 @@
           "type": "row",
           "children": [
             {
-              "id": "blob-desk",
-              "type": "column",
-              "hidden": true,
-              "size": {
-                "weight": 1
-              },
-              "min": 240,
-              "border": {
-                "width": 1,
-                "color": "#303b34"
-              },
-              "children": [
-                {
-                  "id": "blob-desk-label",
-                  "type": "block",
-                  "size": {
-                    "px": 28
-                  },
-                  "content": {
-                    "mod": "blob-workspace",
-                    "props": {
-                      "role": "desk"
-                    }
-                  }
-                },
-                {
-                  "id": "blob-desk-stack",
-                  "type": "stack",
-                  "active": "blob-desk-empty",
-                  "children": [
-                    {
-                      "id": "blob-desk-empty",
-                      "type": "block",
-                      "content": {
-                        "mod": "blob-workspace",
-                        "props": {
-                          "role": "empty"
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
               "id": "blob-main-stack",
               "type": "stack",
               "size": {

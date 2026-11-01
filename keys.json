@@ -1,8 +1,5 @@
 {
   "layout:blobs": {
-    "ctrl-shift-a": "blob-workspace.desk",
-    "ctrl-shift-p": "blob-workspace.pin",
-    "ctrl-shift-r": "blob-workspace.review",
     "ctrl-shift-s": "blob-workspace.shell",
     "ctrl-shift-f": "blob-workspace.files",
     "ctrl-shift-g": "blob-workspace.changes",
