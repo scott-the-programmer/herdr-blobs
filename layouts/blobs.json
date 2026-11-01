@@ -12,7 +12,7 @@
     "border": "#303b34",
     "accent": "#b5d97b"
   },
-  "preview": "layouts/blobs.png",
+  "preview": "preview.png",
   "gap": 0,
   "children": [
     {
