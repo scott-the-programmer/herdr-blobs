@@ -63,4 +63,3 @@ node --test tests/*.test.mjs
 python3 -m unittest discover -s tests -p '*_test.py'
 ```
 
-[RECIPE.md](RECIPE.md) contains the rebuild brief and known limits.
