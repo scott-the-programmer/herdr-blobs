@@ -44,7 +44,8 @@ export function launchRequest(agent, modeId, { space, folder, model, task } = {}
     argv = withoutOptions(argv, ["--model", "-m"], []);
     argv.push("--model", model.trim());
   }
-  const args = { name: agent.name, argv };
+  // No name: the garden names the tab after the topic the agent puts in its title.
+  const args = { argv };
   if (folder?.trim()) args.folder = folder.trim();
   if (task?.trim()) args.task = task.trim();
   if (space) args.space = space;
