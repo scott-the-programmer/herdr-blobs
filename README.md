@@ -62,6 +62,10 @@ To show real coding terminals, run `python3 demo/workspace.py --live --count 6`.
 
 Export demo settings with `python3 demo/workspace.py --dry-run`. Edit the JSON and pass it with `--config <file>`. The [demo-blobs skill](.agents/skills/demo-blobs/SKILL.md) covers setup, verification, and changes to an open demo.
 
+## Recipe and discovery
+
+[RECIPE.md](RECIPE.md) is the rebuild brief for this layout, including workspace controls and known limits. Herdr discovery uses this recipe, the root `preview.png`, and the repository topic `herdr-layout`.
+
 ## Development
 
 CI runs on pull requests, pushes to `main`, and manual dispatches. It checks
