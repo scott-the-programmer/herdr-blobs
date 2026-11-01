@@ -20,6 +20,9 @@ Object.assign(native, { attachField, descendants, tidyPins });
 const typeSource = readFileSync(new URL('../mods/blob-garden/types.js', import.meta.url), 'utf8');
 const { TYPES, blobType } = await import(`data:text/javascript,${encodeURIComponent(typeSource)}`);
 native.TYPES = TYPES;
+const namingSource = readFileSync(new URL('../mods/blob-garden/naming.js', import.meta.url), 'utf8');
+const naming = await import(`data:text/javascript,${encodeURIComponent(namingSource)}`);
+Object.assign(native, naming);
 
 function element() {
   const data = { nodes: [], attrs: {} };
@@ -164,10 +167,33 @@ test('native body motion and blinking scale with zoom, keep identity, and pause 
   assert.equal(idle.loops.top.to, -2);
   assert(idle.loops.top.period > body.loops.top.period);
   assert(idle.nodes[0].nodes[0].nodes.every(eye => eye.loops.height.from <= 3));
-  for (const kind of ['blob', 'pan', 'selection']) {
-    garden.gesture = { kind };
-    assert.equal(render().nodes[0].loops.top, undefined);
+  for (const kind of ['blob', 'pan']) {
+    garden.gesture = { kind, address: 'other' };
+    assert(render().nodes[0].loops.top, `${kind} gesture on another blob keeps this one bobbing`);
   }
+  garden.gesture = { kind: 'selection' };
+  assert.equal(render().nodes[0].loops.top, undefined);
+  garden.gesture = { kind: 'blob', address: agent.address, moved: true };
+  assert.equal(render().nodes[0].loops.top, undefined, 'the dragged blob stops bobbing');
+});
+
+test('drag, pan, and selection divide pointer distance by app zoom', () => {
+  const sandbox = { View: class {}, pinAt, descendants };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const field = { width: 950, height: 400, cellWidth: 160, cellHeight: 256, scale: 1 };
+  const canvas = { x: 24, y: 100, width: 950 * 0.7, height: 400 * 0.7 };
+  const cx = { notify() {} };
+  const garden = new sandbox.BlobGarden();
+  garden.zoom = 2; garden.pan = { x: 70, y: -30 }; garden.pins = {};
+  garden.spawnField = { ...field, placed: [{ a: { address: 't1' }, x: 300, y: 80 }] };
+  garden.beginGesture('blob', { position: { x: 400, y: 300 } }, 't1');
+  garden.moveGesture({ position: { x: 435, y: 314 }, bounds: canvas }, field, cx);
+  const pin = garden.pins.t1, want = pinAt(325, 90, field);
+  assert(Math.abs(pin.x - want.x) < 1e-9 && Math.abs(pin.y - want.y) < 1e-9);
+  garden.endGesture(cx);
+  garden.beginGesture('pan', { position: { x: 400, y: 300 } });
+  garden.moveGesture({ position: { x: 470, y: 300 }, bounds: canvas }, field, cx);
+  assert(Math.abs(garden.pan.x - 170) < 1e-9);
 });
 
 test('right-drag selects visible bodies in either direction after camera zoom and pan', () => {
@@ -322,6 +348,24 @@ for (const type of TYPES) {
     }
   });
 }
+
+test('star path follows app zoom so it fills its hit box', () => {
+  const type = TYPES.find(t => t.id === 'cosmic');
+  for (const zoom of [0.7, 1, 1.5]) {
+    const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+      blobType: () => type, focused: () => null, settings: () => ({ zoom }) };
+    vm.createContext(sandbox); vm.runInContext(source, sandbox);
+    sandbox.readAppZoom();
+    const garden = new sandbox.BlobGarden(); garden.growth = {};
+    const body = garden.blob({ address: 't1', status: 'working' }, 0, 128, 208, 1).nodes[0];
+    const size = body.attrs.w[0] * zoom;
+    const points = body.nodes[0].attrs.path[0].attrs.add_polygon[0];
+    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+    assert(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - size / 2) < 0.01, `centred at zoom ${zoom}`);
+    assert(Math.min(...ys) >= 0 && Math.max(...ys) <= size, `inside box at zoom ${zoom}`);
+    assert(Math.min(...ys) < size * 0.05, `fills box at zoom ${zoom}`);
+  }
+});
 
 test('forehead uses harness icon and scales with zoom', () => {
   const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element };
@@ -514,4 +558,60 @@ test('Tidy button gathers lost blobs into view, keeps the camera, and persists p
   assert.deepEqual([garden.zoom, garden.pan.x, garden.pan.y], [0.5, 700, -300]);
   for (const p of blobs()) assert(p.x >= 0 && p.x < 950 && p.y >= 0 && p.y < 400, `blob in view at ${p.x},${p.y}`);
   assert.deepEqual(Object.keys(JSON.parse(saved['positions-v1'])).sort(), ['t1', 't2', 't3']);
+});
+
+test('garden shows only the active space, with its own camera, and tidy keeps other spaces pinned', async () => {
+  const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
+  const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
+  const saved = {};
+  const live = [['a1', 's1', 'alpha'], ['a2', 's1', 'alpha'], ['b1', 's2', 'beta']]
+    .map(([address, space, space_name]) => ({ address, space, space_name, title: address, status: 'working' }));
+  const terms = [{ address: 'a1', state: 'live' }, { address: 'sub', parent: 'b1', state: 'live', status: 'working' }];
+  let space = 's1';
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element, arrange, pinAt, positionField, blobType,
+    props: () => ({ role: 'board' }), agents: () => live, terminals: () => terms, focused: () => ({ space }), setAgentOrder() {},
+    localStorage: { setItem(key, value) { saved[key] = value; } } };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.fieldSize = { width: 950, height: 400 }; garden.context = {}; garden.selection = [];
+  garden.pins = { b1: { x: 0.9, y: 0.9 } };
+  const cx = { notify() {} };
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  const shown = () => flatten(garden.render()).filter(n => /^orbit-/.test(n.attrs.id?.[0] || '')).map(n => n.attrs.id[0].slice(6)).sort();
+  assert.deepEqual(shown(), ['a1', 'a2']);
+  assert(flatten(garden.render()).some(n => n.nodes.includes('2 agents in alpha')));
+  garden.setZoom(2, cx); garden.selection = ['a1'];
+  flatten(garden.render()).find(n => n.attrs.id?.[0] === 'tidy').attrs.on_click[0]({}, cx);
+  assert.deepEqual(garden.pins.b1, { x: 0.9, y: 0.9 });
+
+  space = 's2';
+  assert.deepEqual(shown(), ['b1', 'sub']);
+  assert.deepEqual([garden.zoom, garden.pan.x, garden.pan.y, garden.selection.length], [1, 0, 0, 0]);
+  garden.pan = { x: 30, y: 40 }; garden.savePan();
+
+  space = 's1';
+  shown();
+  assert.equal(garden.zoom, 2);
+  assert.deepEqual(Object.keys(JSON.parse(saved['canvas-pan-v2'])).sort(), ['s1', 's2']);
+  assert.deepEqual(JSON.parse(saved['canvas-pan-v2']).s2, { x: 30, y: 40 });
+});
+
+test('a drag frame reuses host reads instead of asking the host again', () => {
+  const calls = { agents: 0, terminals: 0, focused: 0 };
+  const list = [{ address: 't1', status: 'idle', space: 's1' }, { address: 't2', status: 'idle', space: 's1' }];
+  const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+    blobType, props: () => ({ role: 'board' }), setAgentOrder() {}, arrange: () => ({ placed: [], width: 950, height: 400, scale: 1, cellWidth: 160, cellHeight: 256 }),
+    agents: () => { calls.agents++; return list; }, terminals: () => { calls.terminals++; return []; },
+    focused: () => { calls.focused++; return { agent: 't1', space: 's1' }; } };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.fieldSize = { width: 950, height: 400 }; garden.zoom = 1;
+  garden.render();
+  assert.deepEqual({ ...calls }, { agents: 1, terminals: 1, focused: 1 }, 'one focus read per render, not one per blob');
+  garden.gesture = { kind: 'blob', address: 't1', moved: true };
+  garden.render(); garden.render();
+  assert.deepEqual({ ...calls }, { agents: 1, terminals: 1, focused: 1 });
+  garden.gesture = null;
+  garden.render();
+  assert.equal(calls.agents, 2, 'reads resume once the drag ends');
 });
