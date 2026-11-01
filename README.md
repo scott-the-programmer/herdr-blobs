@@ -26,16 +26,10 @@ Codex offers Default, Read only, Workspace auto, and YOLO. Claude offers Default
 
 ## Install
 
-Requires Herdr with native mods and active-tab terminal blocks. Context counters also require Python 3 on the agent's machine.
+Open [Herdr](https://herdr.dev/) and tell your agent:
 
-Copy `mods/blob-garden/`, `mods/blob-tabs/`, and `mods/blob-launcher/` into `~/.config/herdr-app/mods/`. Copy both files from `layouts/` into `~/.config/herdr-app/layouts/`. Copy only source and assets. If a name already exists, rename the incoming layout or mod and update its references first.
-
-```sh
-herdr-app check ~/.config/herdr-app/mods/blob-garden
-herdr-app check ~/.config/herdr-app/mods/blob-tabs
-herdr-app check ~/.config/herdr-app/mods/blob-launcher
-herdr-app do layout.switch '{"name":"blobs"}'
-herdr-app status
+```text
+Read ~/.config/herdr-app/AGENTS.md, then install and switch to the Blobs layout from https://github.com/scott-the-programmer/herdr-blobs. Read the repository files before installing, and preserve my existing layouts and mods.
 ```
 
 ## Context usage and blob types
