@@ -5,6 +5,7 @@ import { family, modes, launchRequest } from "./options.js";
 
 const C = { bg: "#101913", line: "#303b34", ink: "#edf0e5", muted: "#9da99c", accent: "#b5d97b" };
 const LAST_AGENT = "blob-launcher.last-agent";
+const LAST_OPTIONS = "blob-launcher.last-options.";
 
 export default class BlobLauncher extends View {
   init(_props, cx) {
@@ -21,11 +22,19 @@ export default class BlobLauncher extends View {
       try {
         this.agents = (await knownAgents({ on: this.space?.machine })).filter(a => a.installed);
         const lastAgent = shared(LAST_AGENT);
-        this.selected = this.agents.find(a => a.key === lastAgent)?.key || this.agents[0]?.key;
+        this.selectAgent(this.agents.find(a => a.key === lastAgent)?.key || this.agents[0]?.key);
       } catch (error) { this.error = `Could not load agents: ${String(error)}`; }
       this.loading = false;
       cx.notify();
     });
+  }
+
+  selectAgent(key) {
+    this.selected = key;
+    const saved = shared(LAST_OPTIONS + key);
+    const agent = this.agents.find(a => a.key === key);
+    this.mode = modes(agent).some(m => m.id === saved?.mode) ? saved.mode : "default";
+    this.model.set_value(family(agent) && typeof saved?.model === "string" ? saved.model : "");
   }
 
   start(cx) {
@@ -37,6 +46,8 @@ export default class BlobLauncher extends View {
       // Herdr creates and selects the new tab immediately; active-tab content shows it before status arrives.
       run(request.command, request.args);
       this.starting = true;
+      setShared(LAST_AGENT, this.selected);
+      setShared(LAST_OPTIONS + this.selected, { mode: this.mode, model: this.model.value().trim() });
       closeOverlay(props().overlay);
     } catch (error) { this.error = String(error); cx.notify(); }
   }
@@ -61,23 +72,23 @@ export default class BlobLauncher extends View {
     return v_flex().size_full().min_h(0).p(22).gap(18).bg(C.bg).text_size(13).text_color(C.ink)
       .child(h_flex().items_center().justify_between()
         .child(div().text_size(21).font_semibold().child("New blob"))
-        .child(div().text_size(11).text_color(C.muted).child("New tab · switches terminal immediately")))
+        .child(div().text_size(11).text_color(C.muted).child("Opens in a new tab")))
       .child(v_flex().gap(7)
-        .child(div().text_size(11).text_color(C.muted).child("AGENT"))
+        .child(div().text_size(11).text_color(C.muted).child("Agent"))
         .child(h_flex().id("launch-agents").w_full().gap(7).overflow_x_scrollbar()
           .children(this.agents.map(a => this.button(`launch-${a.key}`, a.name, a.key === this.selected, (_event, cx) => {
-            this.selected = a.key; this.mode = "default"; this.model.set_value(""); this.error = null; cx.notify();
+            this.selectAgent(a.key); this.error = null; cx.notify();
             setShared(LAST_AGENT, a.key);
           }))))
         .when(this.loading || !this.agents.length, el => el.child(div().text_color(C.muted)
           .child(this.loading ? "Checking installed agents…" : "No installed agents found. Install an agent, then reopen this dialog."))))
       .child(v_flex().gap(8)
-        .child(div().text_size(11).text_color(C.muted).child("PERMISSIONS"))
+        .child(div().text_size(11).text_color(C.muted).child("Permissions"))
         .child(h_flex().gap(7).children(options.map(m => this.button(`mode-${m.id}`, m.label, m.id === this.mode,
           (_event, cx) => { this.mode = m.id; cx.notify(); }))))
         .child(div().text_size(12).text_color(this.mode === "yolo" ? "#f2b477" : C.muted).child(mode.detail)))
       .child(h_flex().gap(8).items_end()
-        .child(div().flex_1().min_w(0).child(this.input("FOLDER", this.folder)))
+        .child(div().flex_1().min_w(0).child(this.input("Folder", this.folder)))
         .when(!this.space?.machine, el => el.child(this.button("pick-folder", "Browse", false, (_event, cx) => {
           cx.spawn(async cx => {
             try { const folder = await pickFolder({ prompt: "Use folder" }); if (folder) this.folder.set_value(folder); }
@@ -85,8 +96,8 @@ export default class BlobLauncher extends View {
             cx.notify();
           });
         }))))
-      .when(Boolean(family(agent)), el => el.child(this.input("MODEL · OPTIONAL", this.model)))
-      .child(this.input("FIRST TASK · OPTIONAL", this.task))
+      .when(Boolean(family(agent)), el => el.child(this.input("Model · optional", this.model)))
+      .child(this.input("First task · optional", this.task))
       .when(Boolean(this.error), el => el.child(div().text_size(12).text_color("#f2b477").child(this.error)))
       .child(h_flex().justify_end().gap(8)
         .child(this.button("launch-cancel", "Cancel", false, () => closeOverlay(props().overlay)))

@@ -1,5 +1,5 @@
-const CELL_WIDTH = 128;
-const CELL_HEIGHT = 208;
+const CELL_WIDTH = 160;
+const CELL_HEIGHT = 256;
 const GAP = 8;
 const ORBIT_X = 14;
 const ORBIT_Y = 10;
@@ -13,9 +13,9 @@ function hash(address) {
 }
 
 // Scale a compact cluster to the measured field, including every label and hit target.
-export function arrange(list, availableWidth, availableHeight) {
-  const width = Math.max(1, availableWidth);
-  const height = Math.max(1, availableHeight);
+export function arrange(list, availableWidth, availableHeight, zoom = 1) {
+  let width = Math.max(1, availableWidth);
+  let height = Math.max(1, availableHeight);
   const count = list.length;
   if (!count) return { placed: [], width, height, scale: 1, cellWidth: CELL_WIDTH, cellHeight: CELL_HEIGHT };
   let best = { columns: 1, scale: 0, shape: Infinity };
@@ -26,8 +26,11 @@ export function arrange(list, availableWidth, availableHeight) {
     const shape = Math.abs(columns - preferredColumns);
     if (scale > best.scale + 0.000001 || Math.abs(scale - best.scale) < 0.000001 && shape < best.shape) best = { columns, scale, shape };
   }
-  const { columns, scale } = best;
+  const { columns } = best;
+  const scale = best.scale * zoom;
   const rows = Math.ceil(count / columns);
+  width = Math.max(width, columns * PITCH_X * scale);
+  height = Math.max(height, rows * PITCH_Y * scale);
   const pitchX = PITCH_X * scale;
   const pitchY = PITCH_Y * scale;
   const ordered = [...list].sort((a, b) => hash(a.address) - hash(b.address) || a.address.localeCompare(b.address));
@@ -39,8 +42,8 @@ export function arrange(list, availableWidth, availableHeight) {
     const x = (width - rowCount * pitchX) / 2 + column * pitchX + (ORBIT_X + 2 + seed % 5) * scale;
     const y = (height - rows * pitchY) / 2 + row * pitchY + (ORBIT_Y + 2 + (seed >>> 8) % 5) * scale;
     return { a, x, y, orbit: {
-      left: { from: x - ORBIT_X * scale, to: x + ORBIT_X * scale, period: 90000 + seed % 5 * 6000 },
-      top: { from: y + ORBIT_Y * scale, to: y - ORBIT_Y * scale, period: 120000 + (seed >>> 3) % 5 * 6000 }
+      left: { from: x - ORBIT_X * scale, to: x + ORBIT_X * scale, period: 45000 + seed % 5 * 3000 },
+      top: { from: y + ORBIT_Y * scale, to: y - ORBIT_Y * scale, period: 60000 + (seed >>> 3) % 5 * 3000 }
     } };
   });
   return { placed, width, height, scale, cellWidth: CELL_WIDTH * scale, cellHeight: CELL_HEIGHT * scale };

@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+const contextSource = readFileSync(new URL('../mods/blob-garden/context.js', import.meta.url), 'utf8');
+const contextHelpers = await import(`data:text/javascript,${encodeURIComponent(contextSource)}`);
+const demoSource = readFileSync(new URL('../mods/blob-garden/demo.js', import.meta.url), 'utf8');
+const { demoProperties } = await import(`data:text/javascript,${encodeURIComponent(demoSource)}`);
+const native = {
+  demoProperties,
+  ...contextHelpers,
+  svg: path => element().asset(path), image: path => element().asset(path),
+  PathBuilder: { fill: () => element(), stroke: width => element().strokeWidth(width) },
+  window: { paint_path: (path, color) => element().path(path).paint(color) }
+};
+const { contextSize, directoryLabel, terminalDirectory } = contextHelpers;
+const positionSource = readFileSync(new URL('../mods/blob-garden/positions.js', import.meta.url), 'utf8');
+const { pinAt, positionField } = await import(`data:text/javascript,${encodeURIComponent(positionSource)}`);
+const typeSource = readFileSync(new URL('../mods/blob-garden/types.js', import.meta.url), 'utf8');
+const { TYPES, blobType } = await import(`data:text/javascript,${encodeURIComponent(typeSource)}`);
+native.TYPES = TYPES;
 
 function element() {
   const data = { nodes: [], attrs: {} };
@@ -10,6 +27,8 @@ function element() {
     if (key in target) return target[key];
     return (...args) => {
       if (key === 'child') data.nodes.push(args[0]);
+      else if (key === 'children') data.nodes.push(...args[0]);
+      else if (key === 'map') return args[0](proxy);
       else if (key === 'when') { if (args[0]) args[1](proxy); }
       else data.attrs[key] = args;
       return proxy;
@@ -18,15 +37,209 @@ function element() {
   return proxy;
 }
 
+test('garden zoom buttons change scale, clamp limits, and reset to fit', () => {
+  const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+    props: () => ({ role: 'board' }), agents: () => [], terminals: () => [], focused: () => null,
+    setAgentOrder() {}, arrange: () => ({ placed: [] }) };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.fieldSize = { width: 950, height: 300 }; garden.zoom = 1;
+  const cx = { notify() {} };
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  const click = id => flatten(garden.render()).find(n => n.attrs.id?.[0] === id).attrs.on_click[0]({}, cx);
+  click('zoom-in'); assert.equal(garden.zoom, 1.1);
+  click('zoom-out'); assert.equal(garden.zoom, 1);
+  for (let i = 0; i < 30; i++) click('zoom-out');
+  assert.equal(garden.zoom, 0.1);
+  for (let i = 0; i < 50; i++) click('zoom-in');
+  assert.equal(garden.zoom, 4);
+  click('zoom-reset'); assert.equal(garden.zoom, 1);
+  const scroll = flatten(garden.render()).find(n => n.attrs.id?.[0] === 'garden-scroll');
+  assert('overflow_hidden' in scroll.attrs);
+  assert(!('overflow_x_scrollbar' in scroll.attrs));
+});
+
 const source = readFileSync(new URL('../mods/blob-garden/main.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/gm, '').replace('export default class BlobGarden', 'globalThis.BlobGarden = class BlobGarden');
 
+test('wheel zoom keeps world point under cursor fixed through repeated zoom and limits', () => {
+  const sandbox = { View: class {} };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.fieldSize = { width: 950, height: 400 }; garden.zoom = 0.6; garden.pan = { x: 48, y: -29 };
+  const point = { x: 132, y: 301 }, center = { x: 475, y: 200 };
+  const worldPoint = () => ({
+    x: center.x + (point.x - center.x - garden.pan.x) / garden.zoom,
+    y: center.y + (point.y - center.y - garden.pan.y) / garden.zoom
+  });
+  const before = worldPoint();
+  let stopped = 0;
+  const cx = { notify() {}, stop_propagation() { stopped++; } };
+  for (const delta of [83, -47, 2000, -4000, 100]) {
+    garden.wheel({ position: { x: point.x + 24, y: point.y + 100 }, bounds: { x: 24, y: 100 },
+      delta: { x: 0, y: delta }, modifiers: {} }, cx);
+    assert(Math.abs(worldPoint().x - before.x) < 1e-9);
+    assert(Math.abs(worldPoint().y - before.y) < 1e-9);
+    assert(garden.zoom >= 0.1 && garden.zoom <= 4);
+  }
+  assert.equal(stopped, 5);
+  const zoom = garden.zoom, pan = { ...garden.pan };
+  garden.wheel({ local_position: point, delta: { x: 23, y: -45 }, modifiers: { shift: true } }, cx);
+  assert.equal(garden.zoom, zoom);
+  assert.equal(garden.pan.x, pan.x + 23);
+  assert.equal(garden.pan.y, pan.y - 45);
+});
+
+test('dragging a blob at non-default zoom converts screen coordinates back into world pins', () => {
+  const sandbox = { View: class {}, pinAt };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.zoom = 2; garden.pan = { x: 70, y: -30 }; garden.pins = {};
+  const field = { width: 950, height: 400, cellWidth: 160, cellHeight: 256, scale: 1 };
+  garden.beginGesture('blob', { position: { x: 300, y: 200 }, bounds: { x: 285, y: 180 } }, 't1');
+  const world = { x: 520, y: 70 }, origin = { x: 24, y: 100 };
+  garden.moveGesture({ position: {
+    x: origin.x + world.x * 2 - 475 + 70 + 15,
+    y: origin.y + world.y * 2 - 200 - 30 + 20
+  }, bounds: origin }, field, { notify() {} });
+  assert.deepEqual(garden.pins.t1, pinAt(world.x, world.y, field));
+});
+
+test('zooming out shrinks body and cell together without delayed body-size animation', () => {
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element,
+    blobType, focused: () => null };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  const a = { address: 't1', status: 'idle', demo: { type: 'pebble', context: { used: 80000, limit: 200000 } } };
+  let previous = Infinity;
+  for (const scale of [2, 1, 0.6, 0.1]) {
+    const cell = garden.blob(a, 0, 160 * scale, 256 * scale, scale);
+    const body = cell.nodes[0];
+    assert(body.attrs.w[0] < previous);
+    assert.equal(body.attrs.w[0], contextSize(a.demo.context).diameter * scale);
+    assert.equal(body.attrs.transition, undefined);
+    assert.equal(cell.attrs.w[0], 160 * scale);
+    previous = body.attrs.w[0];
+  }
+});
+
+test('native body motion and blinking scale with zoom, keep identity, and pause bobbing during gestures', () => {
+  const animatedElement = () => {
+    const node = element();
+    node.loops = {};
+    node.loop = (property, policy) => { node.loops[property] = policy; return node; };
+    return node;
+  };
+  const sandbox = { ...native, View: class {}, div: animatedElement, h_flex: animatedElement,
+    v_flex: animatedElement, blobType, focused: () => null };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  const agent = { address: 't42', status: 'working' };
+  const render = (scale = 1, index = 0) => garden.blob(agent, index, 160 * scale, 256 * scale, scale);
+  const body = render().nodes[0];
+  assert.equal(body.loops.top.to, -5);
+  assert.equal(render(0.5).nodes[0].loops.top.to, -2.5);
+  assert.equal(render(1, 8).nodes[0].loops.top.period, body.loops.top.period);
+  const eyes = body.nodes[0].nodes[0].nodes;
+  assert.equal(eyes[0].loops.height.period, eyes[1].loops.height.period);
+  assert.equal(eyes[0].loops.height.to, 1.5);
+  assert(eyes[0].loops.height.from > eyes[0].loops.height.to);
+  agent.status = 'idle';
+  const idle = render().nodes[0];
+  assert.equal(idle.loops.top.to, -2);
+  assert(idle.loops.top.period > body.loops.top.period);
+  assert(idle.nodes[0].nodes[0].nodes.every(eye => eye.loops.height.from <= 3));
+  for (const kind of ['blob', 'pan', 'selection']) {
+    garden.gesture = { kind };
+    assert.equal(render().nodes[0].loops.top, undefined);
+  }
+});
+
+test('right-drag selects visible bodies in either direction after camera zoom and pan', () => {
+  const overlays = [];
+  const list = ['t1', 't2', 't3'].map(address => ({ address, title: address, status: 'idle' }));
+  const sandbox = { ...native, View: class {}, agents: () => list, terminals: () => [],
+    openOverlay: spec => overlays.push(spec) };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  const world = { width: 1000, height: 600, cellWidth: 160, cellHeight: 256, scale: 1,
+    placed: list.map((a, i) => ({ a, x: 100 + i * 250, y: 100,
+      orbit: { left: { from: 100 + i * 250, to: 100 + i * 250 }, top: { from: 100, to: 100 } } })) };
+  const cx = { notify() {}, stop_propagation() {} };
+  for (const zoom of [0.5, 1, 2]) {
+    garden.selection = [];
+    const view = positionField(world, {}, { x: 40, y: -20 }, zoom);
+    garden.selectionField = view;
+    const first = view.placed[0], second = view.placed[1];
+    const start = { x: first.x + 20 * zoom + 24, y: first.y + 40 * zoom + 100 };
+    const end = { x: second.x + 140 * zoom + 24, y: second.y + 150 * zoom + 100 };
+    garden.beginSelection({ position: end }, cx);
+    garden.moveGesture({ position: start, bounds: { x: 24, y: 100 } }, world, cx);
+    assert.deepEqual([...garden.selection], ['t1', 't2']);
+    garden.finishSelection(cx);
+    assert.equal(overlays.length, 0, 'drag must not open menu');
+    assert.equal(garden.selectionBox, null);
+    garden.beginSelection({ position: start }, cx, 't1');
+    garden.finishSelection(cx);
+    assert.equal(overlays.pop().props.targets.length, 2, 'clicking selected member keeps group');
+    garden.selection = ['t3'];
+    garden.beginSelection({ position: start, modifiers: { shift: true } }, cx);
+    garden.moveGesture({ position: end, bounds: { x: 24, y: 100 } }, world, cx);
+    assert.deepEqual([...garden.selection].sort(), ['t1', 't2', 't3']);
+    garden.endGesture(cx);
+    assert.equal(overlays.length, 0);
+    garden.beginSelection({ position: { x: 0, y: 0 } }, cx);
+    garden.moveGesture({ position: { x: 10, y: 10 }, bounds: { x: 0, y: 0 } }, world, cx);
+    garden.finishSelection(cx);
+    assert.equal(garden.selection.length, 0, 'empty box clears selection');
+  }
+});
+
+test('group actions require kill confirmation and kill only captured targets once', () => {
+  const calls = [], overlays = [];
+  let current = { role: 'selection-menu', overlay: 'menu', targets: [
+    { terminal: 't1', name: 'One' }, { terminal: 'remote/t2', name: 'Two' }, { terminal: 't1', name: 'One' }
+  ] };
+  const sandbox = { ...native, View: class {}, props: () => current, theme: () => ({}),
+    div: element, h_flex: element, v_flex: element,
+    closeOverlay: id => calls.push(['close', id]), openOverlay: spec => overlays.push(spec),
+    run: (command, args) => calls.push([command, args?.terminal]) };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  const click = id => flatten(garden.render()).find(n => n.attrs.id?.[0] === id).attrs.on_click[0]();
+  click('selection-kill');
+  assert.equal(calls.some(c => c[0] === 'terminal.kill'), false);
+  assert.equal(overlays[0].kind, 'dialog');
+  current = { ...overlays[0].props, overlay: 'confirm' };
+  click('kill-cancel');
+  assert.equal(calls.some(c => c[0] === 'terminal.kill'), false);
+  click('kill-confirm'); click('kill-confirm');
+  assert.deepEqual(calls.filter(c => c[0] === 'terminal.kill'), [
+    ['terminal.kill', 't1'], ['terminal.kill', 'remote/t2']
+  ]);
+});
+
+test('hover text stays within two short lines even for long titles and directories', () => {
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element,
+    blobType, focused: () => null };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  const a = { address: 't1', title: 'Long title '.repeat(30), cwd: '/long/path/'.repeat(40), status: 'working' };
+  const text = garden.blob(a, 0, 160, 256, 1).nodes[0].attrs.tooltip[0];
+  assert.equal(text.split('\n').length, 2);
+  assert(text.length <= 80);
+  assert(!text.includes(a.cwd));
+});
+
 for (const child of [false, true]) {
-  test(`right-click kills exact ${child ? 'sub-agent' : 'agent'} without selecting it`, () => {
+  test(`right-click opens action menu for exact ${child ? 'sub-agent' : 'agent'} without selecting or killing it`, () => {
     const calls = [];
+    const overlays = [];
     const agent = { address: 'remote/t42', title: 'Agent', status: 'working', child };
-    const sandbox = { View: class {}, div: element, h_flex: element, v_flex: element,
-      focused: () => ({ agent: 't1' }), agents: () => [agent], terminals: () => [],
+    const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+      blobType, focused: () => ({ agent: 't1' }), agents: () => [agent], terminals: () => [],
+      openOverlay: spec => overlays.push(spec),
       run: (command, args) => calls.push({ command, terminal: args.terminal }) };
     vm.createContext(sandbox); vm.runInContext(source, sandbox);
     const garden = new sandbox.BlobGarden(); garden.growth = {};
@@ -34,10 +247,17 @@ for (const child of [false, true]) {
     const [button, kill] = blob.attrs.on_mouse_down;
     assert.equal(button, 'right');
     let stopped = false;
-    kill({}, { stop_propagation() { stopped = true; } });
+    kill({ position: { x: 100, y: 120 } }, { stop_propagation() { stopped = true; } });
+    assert.equal(overlays.length, 0);
+    garden.finishSelection({ notify() {} });
     assert.equal(stopped, true);
-    assert.deepEqual(calls, [{ command: 'terminal.kill', terminal: agent.address }]);
-    assert.match(blob.attrs.tooltip[0], /Right-click to kill agent and its sub-agents/);
+    assert.deepEqual(calls, []);
+    assert.equal(overlays[0].kind, 'popup');
+    assert.equal(overlays[0].mod, 'blob-garden');
+    assert.equal(overlays[0].props.role, 'selection-menu');
+    assert.equal(overlays[0].props.targets[0].terminal, agent.address);
+    assert.equal(overlays[0].props.targets[0].name, agent.title);
+    assert.equal(blob.attrs.tooltip[0].split('\n').length, 2);
     calls.length = 0;
     blob.attrs.on_click[0]();
     assert.deepEqual(calls, [
@@ -47,3 +267,166 @@ for (const child of [false, true]) {
     ]);
   });
 }
+
+for (const type of TYPES) {
+  test(`${type.name} renders silhouette, harness logo, state color, and selection without type labels`, () => {
+    let selected = false;
+    const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+      blobType: () => type, focused: () => selected ? { agent: 't1' } : null };
+    vm.createContext(sandbox); vm.runInContext(source, sandbox);
+    const garden = new sandbox.BlobGarden(); garden.growth = {};
+    for (const status of ['working', 'idle', 'done', 'blocked']) {
+      const agent = { address: 't1', title: 'Agent', status };
+      const tree = garden.blob(agent, 0, 128, 208, 1);
+      const body = tree.nodes[0];
+      const star = ['frost', 'cosmic'].includes(type.id);
+      const color = { working: '#b5d97b', idle: '#a6abc3', done: '#92cfc3', blocked: '#f2b477' }[status];
+      assert.equal(star ? body.nodes[0].attrs.paint[0] : body.attrs.bg[0], color);
+      if (star) {
+        const points = body.nodes[0].attrs.path[0].attrs.add_polygon[0];
+        assert.equal(points.length, 10);
+        assert(points.every(([x, y]) => x >= 0 && x <= body.attrs.w[0] && y >= 0 && y <= body.attrs.h[0]));
+        assert.equal(body.nodes[1].attrs.paint[0], type.accent);
+      } else {
+        assert(body.attrs.rounded_tl[0] !== body.attrs.rounded_br[0] || type.id === 'ripple');
+      }
+      assert(tree.nodes[1].nodes.includes('Agent'));
+      assert(!tree.nodes.some(n => n.nodes?.includes(`${type.name} · ${type.rarity}`)));
+      assert.equal(body.nodes.length, star ? 4 : 2, 'silhouette, face and logo render');
+      const logo = body.nodes.at(-1).nodes[0];
+      assert.equal(logo.attrs.asset[0], 'icons/agent.svg');
+    }
+    selected = true;
+    const body = garden.blob({ address: 't1', status: 'working' }, 0, 128, 208, 1).nodes[0];
+    if (['frost', 'cosmic'].includes(type.id)) {
+      assert.equal(body.nodes[1].attrs.paint[0], '#edf0e5');
+      assert.equal(body.nodes[1].attrs.path[0].attrs.strokeWidth[0], 3);
+    } else {
+      assert.equal(body.attrs.border_color[0], '#edf0e5');
+      assert.equal(body.attrs.border[0], 3);
+    }
+  });
+}
+
+test('forehead uses harness icon and scales with zoom', () => {
+  const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  for (const tint of [true, false]) {
+    const logo = garden.harnessLogo({ program: { icon: 'icons/codex.svg', tint } }, TYPES[0], 108, 2).nodes[0];
+    assert.equal(logo.attrs.asset[0], 'icons/codex.svg');
+    assert.equal(logo.attrs.size[0], 36);
+    assert.equal(Boolean(logo.attrs.text_color), tint);
+  }
+});
+
+
+test('kill dialog cancels without killing and confirms exact target once', () => {
+  const calls = [];
+  const sandbox = { View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+    props: () => ({ role: 'kill-dialog', terminal: 'remote/t42', name: 'Agent', overlay: 'kill-overlay' }),
+    theme: () => ({}), closeOverlay: id => calls.push(['close', id]),
+    run: (command, args) => calls.push([command, args.terminal]) };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  const nodes = flatten(garden.render());
+  const click = id => nodes.find(n => n.attrs.id?.[0] === id).attrs.on_click[0]();
+  assert.deepEqual(calls, []);
+  click('kill-cancel'); assert.deepEqual(calls, [['close', 'kill-overlay']]);
+  calls.length = 0;
+  click('kill-confirm'); click('kill-confirm');
+  assert.deepEqual(calls, [['close', 'kill-overlay'], ['terminal.kill', 'remote/t42']]);
+});
+
+test('dragging distinguishes click from movement, persists pins and pan, and Fit recenters', () => {
+  const saved = {};
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element,
+    pinAt, positionField, localStorage: { setItem(key, value) { saved[key] = value; } } };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden(); garden.pan = { x: 0, y: 0 }; garden.pins = {}; garden.zoom = 1.5;
+  const cx = { notify() {} };
+  const field = { width: 950, height: 400, cellWidth: 128, cellHeight: 208, scale: 1 };
+  garden.beginGesture('blob', { position: { x: 100, y: 100 }, bounds: { x: 80, y: 80 } }, 't1');
+  garden.moveGesture({ position: { x: 102, y: 101 }, bounds: { x: 0, y: 0 } }, field, cx);
+  assert.equal(garden.suppressClick, null);
+  garden.moveGesture({ position: { x: 300, y: 200 }, bounds: { x: 0, y: 0 } }, field, cx);
+  assert.equal(garden.suppressClick, 't1'); assert(garden.pins.t1);
+  garden.endGesture(cx); assert(JSON.parse(saved['positions-v1']).t1);
+  garden.beginGesture('pan', { position: { x: 50, y: 60 } });
+  garden.moveGesture({ position: { x: 150, y: 40 } }, field, cx);
+  garden.endGesture(cx); assert.equal(garden.pan.x, 100); assert.equal(garden.pan.y, -20);
+  garden.resetView(cx); assert.equal(garden.pan.x, 0); assert.equal(garden.zoom, 1); assert(garden.pins.t1);
+});
+
+
+test('demo overrides render chosen rarity and context while unlabelled agents use telemetry', () => {
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element,
+    blobType, focused: () => null };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.context = { t1: { used: 0, limit: 200000 } };
+  const a = { address: 't1', status: 'working', demo: demoProperties({ 'blob.demo': JSON.stringify({
+    run: 'demo', type: 'cosmic', used: 1000000, limit: 1000000
+  }) }) };
+  const demoBody = garden.blob(a, 0, 160, 256, 1).nodes[0];
+  assert.equal(demoBody.attrs.w[0], 144);
+  assert.match(demoBody.attrs.tooltip[0], /1000k tokens · 100%/);
+  delete a.demo;
+  assert.equal(garden.blob(a, 0, 160, 256, 1).nodes[0].attrs.w[0], 81);
+});
+
+test('demo view applies zoom once, keeps manual controls, restores previous view, and respects drags', () => {
+  const sandbox = { ...native, View: class {} };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.zoom = 1.2; garden.pan = { x: 10, y: 20 }; garden.pins = { t1: { x: 0.2, y: 0.3 } };
+  const list = [{ address: 't1', demo: { run: 'demo', zoom: 0.6, pin: { x: 1, y: 1 } } }];
+  assert.equal(garden.demoView(list).t1.x, 0.2);
+  assert.equal(garden.zoom, 0.6); assert.equal(garden.pan.x, 0);
+  garden.zoom = 0.8; garden.demoView(list); assert.equal(garden.zoom, 0.8);
+  list[0].demo.zoom = 0.7; garden.demoView(list); assert.equal(garden.zoom, 0.7);
+  garden.demoView([]); assert.equal(garden.zoom, 1.2); assert.equal(garden.pan.x, 10);
+});
+
+test('new blobs spawn beside previous active blob, avoid occupied slots, and persist positions', async () => {
+  const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
+  const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
+  let active = 't1';
+  const saved = {};
+  const sandbox = { View: class {}, pinAt, positionField, focused: () => ({ agent: active }),
+    localStorage: { setItem(key, value) { saved[key] = value; } } };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden(); garden.pins = {};
+  let list = [{ address: 't1' }, { address: 't2' }];
+  const render = () => {
+    const world = arrange(list, 950, 400);
+    garden.spawnView(list, world, { ...garden.pins });
+    return garden.spawnField;
+  };
+  render(); active = 't2';
+  const before = render();
+  const anchor = before.placed.find(p => p.a.address === 't2');
+  active = 't3'; // Creating a terminal switches focus before the garden renders.
+  list = [...list, { address: 't3' }, { address: 't4' }];
+  const after = render();
+  for (const p of before.placed) {
+    const q = after.placed.find(q => q.a.address === p.a.address);
+    assert(Math.abs(p.x - q.x) < 0.000001);
+    assert(Math.abs(p.y - q.y) < 0.000001);
+  }
+  const first = after.placed.find(p => p.a.address === 't3');
+  const steps = Math.abs(first.x - anchor.x) / (after.cellWidth + 36 * after.scale)
+    + Math.abs(first.y - anchor.y) / (after.cellHeight + 28 * after.scale);
+  assert(Math.abs(steps - 1) < 0.000001, 'new blob uses a free slot immediately beside previous active blob');
+  const second = after.placed.find(p => p.a.address === 't4');
+  assert(Math.abs(second.x - first.x) >= after.cellWidth || Math.abs(second.y - first.y) >= after.cellHeight);
+  assert(JSON.parse(saved['positions-v1']).t3);
+  const settled = render();
+  assert.deepEqual(settled.placed.map(p => [p.x, p.y]), after.placed.map(p => [p.x, p.y]));
+  const demo = { address: 'demo', demo: { pin: { x: 0.1, y: 0.9 } } };
+  list.push(demo);
+  const world = arrange(list, 950, 400);
+  garden.spawnView(list, world, { ...garden.pins, demo: demo.demo.pin });
+  assert.equal(garden.pins.demo, undefined, 'explicit demo positions keep precedence');
+});

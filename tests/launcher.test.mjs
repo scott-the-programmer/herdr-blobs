@@ -76,7 +76,7 @@ test('active tab drives bottom terminal and + Terminal creates a tab', () => {
   assert.equal(calls.at(-1)[0], 'tab.select'); assert.equal(calls.at(-1)[1].id, 'tab1');
 });
 
-test('loaded launcher keeps YOLO opt-in and dispatches selected mode before closing', async () => {
+test('fresh launcher starts with defaults and dispatches selected mode before closing', async () => {
   const actions = [];
   const tasks = [];
   const input = initial => ({ text: initial?.value || '', value() { return this.text; }, set_value(value) { this.text = value; }, on() {} });
@@ -85,7 +85,7 @@ test('loaded launcher keeps YOLO opt-in and dispatches selected mode before clos
   const cx = { spawn(fn) { tasks.push(fn(cx)); }, notify() {} };
   const sandbox = { View: class {}, InputState: { new: input },
     spaces: () => [{ id: 'space1', active: true, folder: '/work' }], focused: () => ({ cwd: '/work/current' }),
-    knownAgents: async () => [codex, claude], props: () => ({ overlay: 'launcher' }), shared: () => null,
+    knownAgents: async () => [codex, claude], props: () => ({ overlay: 'launcher' }), shared: () => null, setShared() {},
     run: (...args) => actions.push(['run', ...args]), closeOverlay: id => actions.push(['close', id]),
     modes, family, launchRequest };
   vm.createContext(sandbox); vm.runInContext(source, sandbox);
@@ -143,4 +143,50 @@ test('launcher remembers agent selection across dialogs and reloads, with instal
   assert.equal((await open(Launcher)).selected, 'codex', 'uninstalled selection falls back');
   installed = [];
   assert.equal((await open(Launcher)).selected, undefined);
+});
+
+
+test('new blobs retain last launched permission and model arguments per agent across reloads', async () => {
+  const saved = new Map();
+  const launched = [];
+  const source = readFileSync(new URL('../mods/blob-launcher/main.js', import.meta.url), 'utf8')
+    .replace(/^import .*;\n/gm, '').replace('export default class BlobLauncher', 'globalThis.BlobLauncher = class BlobLauncher');
+  async function open() {
+    const tasks = [];
+    const input = initial => ({ text: initial?.value || '', value() { return this.text; }, set_value(value) { this.text = value; }, on() {} });
+    const sandbox = { View: class {}, InputState: { new: input },
+      spaces: () => [{ id: 'space1', active: true }], focused: () => ({ cwd: '/current' }),
+      knownAgents: async () => [codex, claude], props: () => ({ overlay: 'launcher' }),
+      shared: key => saved.get(key), setShared: (key, value) => saved.set(key, value),
+      run: (_command, args) => launched.push(args), closeOverlay() {}, modes, family, launchRequest };
+    vm.createContext(sandbox); vm.runInContext(source, sandbox);
+    const cx = { spawn(fn) { tasks.push(fn(cx)); }, notify() {} };
+    const launcher = new sandbox.BlobLauncher(); launcher.init({}, cx); await Promise.all(tasks);
+    return { launcher, cx };
+  }
+  const first = await open();
+  first.launcher.mode = 'yolo'; first.launcher.model.set_value('custom-model');
+  first.launcher.task.set_value('One-time task'); first.launcher.start(first.cx);
+  const next = await open();
+  assert.equal(next.launcher.selected, 'codex');
+  assert.equal(next.launcher.mode, 'yolo');
+  assert.equal(next.launcher.model.value(), 'custom-model');
+  assert.equal(next.launcher.task.value(), '');
+  next.launcher.start(next.cx);
+  assert.deepEqual(launched[1].argv, launched[0].argv);
+  assert.equal(launched[1].task, undefined);
+  next.launcher.selectAgent('claude');
+  assert.equal(next.launcher.mode, 'default'); assert.equal(next.launcher.model.value(), '');
+  const other = await open(); other.launcher.selectAgent('claude');
+  other.launcher.mode = 'plan'; other.launcher.start(other.cx);
+  const reopened = await open();
+  assert.equal(reopened.launcher.selected, 'claude'); assert.equal(reopened.launcher.mode, 'plan');
+  reopened.launcher.selectAgent('codex');
+  assert.equal(reopened.launcher.mode, 'yolo'); assert.equal(reopened.launcher.model.value(), 'custom-model');
+  reopened.launcher.mode = 'default'; reopened.launcher.model.set_value(''); reopened.launcher.start(reopened.cx);
+  const reset = await open();
+  assert.equal(reset.launcher.mode, 'default'); assert.equal(reset.launcher.model.value(), '');
+  saved.set('blob-launcher.last-options.codex', { mode: 'plan', model: 123 });
+  const invalid = await open();
+  assert.equal(invalid.launcher.mode, 'default'); assert.equal(invalid.launcher.model.value(), '');
 });
