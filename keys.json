@@ -1,0 +1,14 @@
+{
+  "layout:blobs": {
+    "ctrl-shift-a": "blob-workspace.desk",
+    "ctrl-shift-p": "blob-workspace.pin",
+    "ctrl-shift-r": "blob-workspace.review",
+    "ctrl-shift-s": "blob-workspace.shell",
+    "ctrl-shift-f": "blob-workspace.files",
+    "ctrl-shift-g": "blob-workspace.changes",
+    "alt-up": "blob-workspace.space-prev",
+    "alt-down": "blob-workspace.space-next",
+    "alt-shift-up": "blob-workspace.agent-prev",
+    "alt-shift-down": "blob-workspace.agent-next"
+  }
+}

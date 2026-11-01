@@ -448,7 +448,7 @@ export default class BlobGarden extends View {
       .child(h_flex().h(list.length > 1 ? 34 : 65).flex_none().items_center().justify_between()
         .child(v_flex().gap(4)
           .when(list.length <= 1, el => el.child(div().text_size(24).font_semibold().text_color(C.ink).child("Agent sessions")))
-          .child(div().text_size(12).text_color(C.muted).child(`${list.length} agent${list.length === 1 ? "" : "s"} across your spaces · size follows context usage`))))
+          .child(div().text_size(12).text_color(C.muted).child(`${list.length} agent${list.length === 1 ? "" : "s"} across your spaces`))))
       .child(v_flex().id("garden-scroll").flex_1().min_h(0).overflow_hidden()
         .on_size_change((size, cx) => {
           if (Math.abs(size.width - this.fieldSize.width) > 1 || Math.abs(size.height - this.fieldSize.height) > 1) {

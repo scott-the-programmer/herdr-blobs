@@ -45,7 +45,8 @@ test('unsupported modes and absent agents fail before launch; empty setup create
 test('active tab drives bottom terminal and + Terminal creates a tab', () => {
   const layout = JSON.parse(readFileSync(new URL('../layouts/blobs.json', import.meta.url)));
   const session = layout.children.find(n => n.id === 'session');
-  assert.deepEqual(session.children.find(n => n.id === 'session-terminal').content, { tab: 'active' });
+  const body = session.children.find(n => n.id === 'session-body');
+  assert.deepEqual(body.children.find(n => n.id === 'session-terminal').content, { tab: 'active' });
   assert.equal(session.children[0].content.mod, 'blob-tabs');
   const calls = [];
   function element() {

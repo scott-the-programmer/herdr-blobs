@@ -14,6 +14,20 @@ Right-drag a box to select blobs. Hold Shift to add to the selection. Right-clic
 
 Blobs bob and blink. Working blobs bob faster; idle blobs have sleepy eyes. Labels stay steady. Bobbing pauses while you drag, pan, or select.
 
+## Workspace
+
+The space strip switches between repositories and worktrees. `+ Worktree` creates a branch checkout and its own space. `Open worktree` switches to an existing checkout. These use Herdr's worktree dialogs.
+
+Focus a session and click `Pin session` to keep its terminal beside your tabs. Each space remembers its own pinned session. `Unpin` hides the desk without stopping the session.
+
+`Files` and `Changes` toggle Herdr's file browser and Git changes panel. `Review` opens `tuicr -w` when tuicr is installed, or the Changes panel otherwise. A live Review tab is reused. Manual reviews of another author's pull request use `tuicr pr` when GitHub CLI can identify it.
+
+`Auto review on` opens review when an agent finishes with uncommitted changes. Reviews for other spaces wait until you switch there. Click the toggle to turn automatic review off. Reviews never stage, commit, push, or publish comments automatically.
+
+Merge the `layout:blobs` bindings from [keys.json](keys.json) into your Herdr keys for shortcuts. Ctrl+Shift+A focuses the pinned session, Ctrl+Shift+P pins the focused session, Ctrl+Shift+R opens review, Ctrl+Shift+S opens Shell, and Ctrl+Shift+F/G toggle Files/Changes. Alt+Up/Down switch spaces; Alt+Shift+Up/Down switch agents.
+
+Workspace additions are inspired by [Bercail](https://github.com/simoncrypta/bercail). Bercail's bot, subscription setup, issue handoffs, and webhook service are separate tools and are not installed by this layout.
+
 ## Start agents and terminals
 
 `+ New agent` opens the launcher. Choose an installed agent, permission mode, working folder, optional model, and optional first task. Starting an agent opens and selects a new tab immediately. Its blob appears beside the last active blob in the nearest free slot. Existing blobs keep their positions.
@@ -29,7 +43,7 @@ Codex offers Default, Read only, Workspace auto, and YOLO. Claude offers Default
 Open [Herdr](https://herdr.dev/) and tell your agent:
 
 ```text
-Read ~/.config/herdr-app/AGENTS.md, then install and switch to the Blobs layout from https://github.com/scott-the-programmer/herdr-blobs. Read the repository files before installing, and preserve my existing layouts and mods.
+Read ~/.config/herdr-app/AGENTS.md, then install and switch to the Blobs layout from https://github.com/scott-the-programmer/herdr-blobs. Read the repository files before installing, merge its layout-specific keys, and preserve my existing layouts, mods, and keybindings.
 ```
 
 ## Context usage and blob types
@@ -50,10 +64,42 @@ Export demo settings with `python3 demo/workspace.py --dry-run`. Edit the JSON a
 
 ## Development
 
+CI runs on pull requests, pushes to `main`, and manual dispatches. It checks
+JavaScript and Python syntax, validates layout and mod JSON, and runs both test
+suites on Linux and macOS with Node.js 24 and Python 3.14. No dependency install
+or Herdr instance is required. GitHub Actions dependencies use pinned commits;
+Dependabot checks for updates weekly.
+
 Run regression tests:
 
 ```sh
 node --test tests/*.test.mjs
 python3 -m unittest discover -s tests -p '*_test.py'
 ```
+
+## Releases
+
+After merging changes to `main`, tag the commit you want to release and push
+the tag:
+
+```sh
+git switch main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow reruns CI on the tagged commit. If all checks pass, it
+publishes a GitHub release with generated notes, `herdr-blobs-v1.0.0.zip`, and
+`SHA256SUMS`. The ZIP contains the tracked repository files under a versioned
+directory, including `layouts/` and `mods/`. Extract it and use the installation
+prompt above with the extracted directory as the source. Existing layouts and
+mods still need to be preserved during installation.
+
+Use a tag such as `v1.1.0-rc.1` to publish a prerelease. Tags must match
+`vMAJOR.MINOR.PATCH` with an optional prerelease suffix. Publishing uses the
+built-in `GITHUB_TOKEN`; no extra secrets are required.
+
+To verify a downloaded ZIP, keep it beside `SHA256SUMS` and run
+`sha256sum -c SHA256SUMS` on Linux or `shasum -a 256 -c SHA256SUMS` on macOS.
 

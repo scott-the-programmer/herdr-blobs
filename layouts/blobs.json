@@ -65,14 +65,111 @@
           }
         },
         {
-          "id": "session-terminal",
+          "id": "blob-workspace-toolbar",
           "type": "block",
-          "content": {
-            "tab": "active"
+          "size": {
+            "px": 36
           },
-          "padding": [
-            6,
-            14
+          "content": {
+            "mod": "blob-workspace"
+          }
+        },
+        {
+          "id": "session-body",
+          "type": "row",
+          "children": [
+            {
+              "id": "blob-desk",
+              "type": "column",
+              "hidden": true,
+              "size": {
+                "weight": 1
+              },
+              "min": 240,
+              "border": {
+                "width": 1,
+                "color": "#303b34"
+              },
+              "children": [
+                {
+                  "id": "blob-desk-label",
+                  "type": "block",
+                  "size": {
+                    "px": 28
+                  },
+                  "content": {
+                    "mod": "blob-workspace",
+                    "props": {
+                      "role": "desk"
+                    }
+                  }
+                },
+                {
+                  "id": "blob-desk-stack",
+                  "type": "stack",
+                  "active": "blob-desk-empty",
+                  "children": [
+                    {
+                      "id": "blob-desk-empty",
+                      "type": "block",
+                      "content": {
+                        "mod": "blob-workspace",
+                        "props": {
+                          "role": "empty"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "session-terminal",
+              "type": "block",
+              "content": {
+                "tab": "active"
+              },
+              "padding": [
+                6,
+                14
+              ],
+              "size": {
+                "weight": 1
+              }
+            },
+            {
+              "id": "blob-panel",
+              "type": "column",
+              "hidden": true,
+              "size": {
+                "px": 320
+              },
+              "min": 260,
+              "max": 700,
+              "children": [
+                {
+                  "id": "blob-panel-stack",
+                  "type": "stack",
+                  "active": "blob-changes",
+                  "children": [
+                    {
+                      "id": "blob-files",
+                      "type": "block",
+                      "content": {
+                        "mod": "files"
+                      }
+                    },
+                    {
+                      "id": "blob-changes",
+                      "type": "block",
+                      "content": {
+                        "mod": "changes"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
           ]
         }
       ]
