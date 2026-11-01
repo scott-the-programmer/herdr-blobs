@@ -34,19 +34,14 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.14'
       - name: Check source syntax and JSON
         run: |
           for source_file in mods/*/*.js; do
             node --input-type=module --check < "$source_file"
           done
-          python3 -m compileall -q demo mods tests
-          for json_file in layouts/*.json mods/*/mod.json; do
-            python3 -m json.tool "$json_file" > /dev/null
+          node --check demo/workspace.mjs
+          for json_file in layouts/*.json mods/*/mod.json keys.json; do
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$json_file"
           done
       - name: Run JavaScript regression tests
         run: node --test tests/*.test.mjs
-      - name: Run Python regression tests
-        run: python3 -m unittest discover -s tests -p '*_test.py'

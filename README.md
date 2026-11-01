@@ -48,5 +48,4 @@ Run regression tests:
 
 ```sh
 node --test tests/*.test.mjs
-python3 -m unittest discover -s tests -p '*_test.py'
 ```
