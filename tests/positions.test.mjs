@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const load = async path => import(`data:text/javascript,${encodeURIComponent(readFileSync(new URL(path, import.meta.url), 'utf8'))}`);
 const { arrange } = await load('../mods/blob-garden/geometry.js');
-const { pinAt, positionField } = await load('../mods/blob-garden/positions.js');
+const { pinAt, positionField, attachField, descendants, tidyPins } = await load('../mods/blob-garden/positions.js');
 
 test('dragged positions follow pointer beyond fit bounds at every camera zoom', () => {
   const world = arrange([{ address: 't1' }, { address: 't2' }], 950, 400);
@@ -56,6 +56,54 @@ test('camera zoom scales pinned and unpinned positions, spacing, and orbits toge
       assert.equal(q.x, p.x * zoom + 475 * (1 - zoom) + 31);
       assert.equal(q.y, p.y * zoom + 200 * (1 - zoom) - 17);
       assert.equal(q.orbit.left.from, p.orbit.left.from * zoom + 475 * (1 - zoom) + 31);
+    }
+  }
+});
+
+test('sub-agents drift in lockstep with their root ancestor and get one tether per parent link', () => {
+  const list = [{ address: 'p' }, { address: 'c', parent: 'p' }, { address: 'g', parent: 'c' }, { address: 'solo' }];
+  const field = attachField(positionField(arrange(list, 950, 400), {}, { x: 30, y: -10 }, 0.8));
+  const at = address => field.placed.find(p => p.a.address === address);
+  const root = at('p');
+  for (const address of ['c', 'g']) {
+    const p = at(address);
+    assert.equal(p.orbit.left.period, root.orbit.left.period);
+    assert.equal(p.orbit.top.period, root.orbit.top.period);
+    assert(Math.abs(p.orbit.left.from - p.x - (root.orbit.left.from - root.x)) < 1e-9);
+    assert(Math.abs(p.orbit.top.to - p.y - (root.orbit.top.to - root.y)) < 1e-9);
+  }
+  const links = field.tethers.map(t => `${t.parent.a.address}>${t.child.a.address}`).sort();
+  assert.deepEqual(links, ['c>g', 'p>c']);
+  assert.equal(field.tethers[0].drift.left.from, root.orbit.left.from - root.x);
+  const plain = positionField(arrange(list, 950, 400), {}, { x: 30, y: -10 }, 0.8);
+  assert.deepEqual(at('solo').orbit, plain.placed.find(p => p.a.address === 'solo').orbit, 'unrelated blobs keep their own drift');
+  assert.deepEqual(descendants(field.placed, 'p').sort(), ['c', 'g']);
+  assert.deepEqual(descendants(field.placed, 'c'), ['g']);
+  assert.deepEqual(descendants(field.placed, 'solo'), []);
+});
+
+test('parent cycles do not hang attachment or descendant search', () => {
+  const list = [{ address: 'a', parent: 'b' }, { address: 'b', parent: 'a' }];
+  const field = attachField(positionField(arrange(list, 950, 400)));
+  assert.equal(field.tethers.length, 2);
+  assert.deepEqual(descendants(field.placed, 'a'), ['b']);
+});
+
+test('tidy gathers lost blobs into the current view without moving the camera', () => {
+  const list = ['t1', 't2', 't3', 't4'].map(address => ({ address }));
+  const world = arrange(list, 950, 400);
+  const lost = { t1: { x: -40, y: 30 }, t2: { x: 55, y: -12 } };
+  assert.deepEqual(positionField(world, tidyPins(world)).placed.map(p => [p.x, p.y]),
+    world.placed.map(p => [p.x, p.y]));
+  for (const zoom of [0.3, 1, 2.5]) {
+    const pan = { x: 900, y: -350 };
+    const before = positionField(world, lost, pan, zoom).placed;
+    assert(before.some(p => p.x > 950 || p.x < 0 || p.y > 400 || p.y < 0), 'fixture blobs start out of view');
+    const view = positionField(world, tidyPins(world, pan, zoom), pan, zoom);
+    const fit = positionField(world, {}, { x: 0, y: 0 }, zoom).placed;
+    for (let i = 0; i < fit.length; i++) {
+      assert(Math.abs(view.placed[i].x - fit[i].x) < 0.000001, `x at zoom ${zoom}`);
+      assert(Math.abs(view.placed[i].y - fit[i].y) < 0.000001, `y at zoom ${zoom}`);
     }
   }
 });

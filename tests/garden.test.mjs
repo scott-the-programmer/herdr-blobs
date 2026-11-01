@@ -15,7 +15,8 @@ const native = {
 };
 const { contextSize, directoryLabel, terminalDirectory } = contextHelpers;
 const positionSource = readFileSync(new URL('../mods/blob-garden/positions.js', import.meta.url), 'utf8');
-const { pinAt, positionField } = await import(`data:text/javascript,${encodeURIComponent(positionSource)}`);
+const { pinAt, positionField, attachField, descendants, tidyPins } = await import(`data:text/javascript,${encodeURIComponent(positionSource)}`);
+Object.assign(native, { attachField, descendants, tidyPins });
 const typeSource = readFileSync(new URL('../mods/blob-garden/types.js', import.meta.url), 'utf8');
 const { TYPES, blobType } = await import(`data:text/javascript,${encodeURIComponent(typeSource)}`);
 native.TYPES = TYPES;
@@ -429,4 +430,74 @@ test('new blobs spawn beside previous active blob, avoid occupied slots, and per
   const world = arrange(list, 950, 400);
   garden.spawnView(list, world, { ...garden.pins, demo: demo.demo.pin });
   assert.equal(garden.pins.demo, undefined, 'explicit demo positions keep precedence');
+});
+
+test('sub-agents record their garden parent, spawn beside it, and follow it when dragged', async () => {
+  const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
+  const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
+  const terms = [
+    { address: 'p', state: 'live' }, { address: 'far', state: 'live' },
+    { address: 'sub', state: 'live', parent: 'p', status: 'working' },
+    { address: 'orphan', state: 'live', parent: 'gone' }
+  ];
+  const saved = {};
+  const sandbox = { ...native, View: class {}, pinAt, positionField, focused: () => ({ agent: 'far' }),
+    agents: () => [{ address: 'p', status: 'idle' }, { address: 'far', status: 'idle' }, { address: 'orphan', status: 'idle' }],
+    terminals: () => terms, localStorage: { setItem(key, value) { saved[key] = value; } } };
+  vm.createContext(sandbox);
+  vm.runInContext(source + '\nglobalThis.liveAgents = liveAgents;', sandbox);
+  const all = sandbox.liveAgents();
+  assert.equal(all.find(a => a.address === 'sub').parent, 'p');
+  assert.equal(all.find(a => a.address === 'orphan').parent, null, 'parents outside the garden are ignored');
+
+  const garden = new sandbox.BlobGarden(); garden.pins = {};
+  let list = all.filter(a => a.address !== 'sub');
+  const render = () => { const world = arrange(list, 950, 400); garden.spawnView(list, world, { ...garden.pins }); return world; };
+  render(); render();
+  list = all;
+  const world = render();
+  const at = address => garden.spawnField.placed.find(p => p.a.address === address);
+  const steps = (a, b) => Math.abs(a.x - b.x) / (world.cellWidth + 36 * world.scale) + Math.abs(a.y - b.y) / (world.cellHeight + 28 * world.scale);
+  assert(Math.abs(steps(at('sub'), at('p')) - 1) < 1e-6, 'sub-agent spawns beside its parent, not the active blob');
+
+  const before = { p: { ...garden.pins.p }, sub: { ...garden.pins.sub }, far: { ...garden.pins.far } };
+  const cx = { notify() {} };
+  garden.beginGesture('blob', { position: { x: 100, y: 100 }, bounds: { x: 90, y: 90 } }, 'p');
+  garden.moveGesture({ position: { x: 260, y: 180 }, bounds: { x: 0, y: 0 } }, world, cx);
+  assert(garden.dragging('sub') && !garden.dragging('far'));
+  const moved = { x: garden.pins.p.x - before.p.x, y: garden.pins.p.y - before.p.y };
+  assert(Math.abs(moved.x) > 0.01);
+  assert(Math.abs(garden.pins.sub.x - before.sub.x - moved.x) < 1e-6);
+  assert(Math.abs(garden.pins.sub.y - before.sub.y - moved.y) < 1e-6);
+  assert.deepEqual(garden.pins.far, before.far);
+  garden.endGesture(cx);
+  assert(JSON.parse(saved['positions-v1']).sub);
+
+  garden.beginGesture('blob', { position: { x: 100, y: 100 }, bounds: { x: 90, y: 90 } }, 'sub');
+  const parentPin = { ...garden.pins.p };
+  garden.moveGesture({ position: { x: 20, y: 30 }, bounds: { x: 0, y: 0 } }, world, cx);
+  assert.deepEqual(garden.pins.p, parentPin, 'dragging a sub-agent leaves its parent in place');
+});
+
+test('Tidy button gathers lost blobs into view, keeps the camera, and persists pins', async () => {
+  const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
+  const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
+  const saved = {};
+  const live = ['t1', 't2', 't3'].map(address => ({ address, title: address, status: 'working' }));
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element, arrange, pinAt, positionField, blobType,
+    props: () => ({ role: 'board' }), agents: () => live, terminals: () => [], focused: () => null, setAgentOrder() {},
+    localStorage: { setItem(key, value) { saved[key] = value; } } };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const garden = new sandbox.BlobGarden();
+  garden.fieldSize = { width: 950, height: 400 }; garden.zoom = 0.5; garden.pan = { x: 700, y: -300 };
+  garden.pins = { t1: { x: 40, y: -25 }, t2: { x: -60, y: 9 } }; garden.context = {}; garden.selection = [];
+  const cx = { notify() {} };
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  const blobs = () => flatten(garden.render()).filter(n => /^orbit-/.test(n.attrs.id?.[0] || ''))
+    .map(n => ({ x: n.attrs.left[0], y: n.attrs.top[0] }));
+  assert(blobs().some(p => p.x < 0 || p.x > 950 || p.y < 0 || p.y > 400), 'fixture starts with lost blobs');
+  flatten(garden.render()).find(n => n.attrs.id?.[0] === 'tidy').attrs.on_click[0]({}, cx);
+  assert.deepEqual([garden.zoom, garden.pan.x, garden.pan.y], [0.5, 700, -300]);
+  for (const p of blobs()) assert(p.x >= 0 && p.x < 950 && p.y >= 0 && p.y < 400, `blob in view at ${p.x},${p.y}`);
+  assert.deepEqual(Object.keys(JSON.parse(saved['positions-v1'])).sort(), ['t1', 't2', 't3']);
 });

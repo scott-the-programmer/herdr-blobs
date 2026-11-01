@@ -1,9 +1,10 @@
 import { View, div, PathBuilder, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, terminals, focused, run, props, setAgentOrder, openOverlay, closeOverlay, theme, exec, readTextFile, appHome, nextCommand } from "herdr";
+import { agents, terminals, focused, run, props, setAgentOrder, openOverlay, closeOverlay, theme, exec, nextCommand } from "herdr";
 import { arrange } from "./geometry.js";
-import { pinAt, positionField } from "./positions.js";
+import { pinAt, positionField, attachField, descendants, tidyPins } from "./positions.js";
 import { contextSize, terminalDirectory, directoryLabel } from "./context.js";
+import { readCounters } from "./codex.js";
 import { blobType, TYPES } from "./types.js";
 import { demoProperties } from "./demo.js";
 
@@ -13,7 +14,10 @@ const WORD = { working: "Working", blocked: "Needs you", done: "Done", idle: "Id
 // Include descendants without panes when their parent already appears in the garden.
 function liveAgents() {
   const all = terminals().filter(t => t.state === "live");
-  const list = agents().map(a => ({ ...a, cwd: terminalDirectory(all.find(t => t.address === a.address)) }));
+  const list = agents().map(a => {
+    const terminal = all.find(t => t.address === a.address);
+    return { ...a, cwd: terminalDirectory(terminal), parent: terminal?.parent };
+  });
   const known = new Set(list.map(a => a.address));
   let added = true;
   while (added) {
@@ -23,12 +27,14 @@ function liveAgents() {
       const parent = list.find(a => a.address === t.parent);
       list.push({ address: t.address, title: t.name || t.program?.name || t.address,
         cwd: terminalDirectory(t) || parent.cwd, space_name: parent.space_name, program: t.program, status: t.status === "error" ? "blocked" : t.status,
-        child: true });
+        parent: t.parent, child: true });
       known.add(t.address);
       added = true;
     }
   }
-  return list.map(a => ({ ...a, demo: demoProperties(all.find(t => t.address === a.address)?.labels), status: WORD[a.status] ? a.status : "idle" }));
+  // A parent counts only when its blob is in the garden too.
+  return list.map(a => ({ ...a, parent: a.parent !== a.address && known.has(a.parent) ? a.parent : null,
+    demo: demoProperties(all.find(t => t.address === a.address)?.labels), status: WORD[a.status] ? a.status : "idle" }));
 }
 
 export default class BlobGarden extends View {
@@ -52,29 +58,27 @@ export default class BlobGarden extends View {
         if (command === "clear-selection") { this.selection = []; cx.notify(); }
       }
     });
-    cx.spawn(async cx => {
-      this.contextReader = await readTextFile(`${appHome()}/mods/blob-garden/context.py`);
-      await this.refreshContext(cx);
-    });
+    cx.spawn(async cx => this.refreshContext(cx));
     cx.timer.every(10000, cx => cx.spawn(async cx => this.refreshContext(cx)));
   }
 
   async refreshContext(cx) {
-    if (this.readingContext || !this.contextReader) return;
+    if (this.readingContext) return;
     this.readingContext = true;
     try {
       const groups = new Map();
       for (const t of terminals().filter(t => t.state === "live")) {
-        if (![t.program?.key, t.report?.app, t.status?.app, t.foreground?.name].some(value => String(value || "").includes("codex"))) continue;
+        const names = [t.program?.key, t.report?.app, t.status?.app, t.foreground?.name].map(value => String(value || ""));
+        const agent = names.some(value => value.includes("codex")) ? "codex" : names.some(value => value.includes("claude")) ? "claude" : null;
+        if (!agent) continue;
         const machine = t.address.includes("/") ? t.address.split("/")[0] : null;
         if (!groups.has(machine)) groups.set(machine, []);
-        groups.get(machine).push({ address: t.address, title: t.title, cwd: terminalDirectory(t),
+        groups.get(machine).push({ address: t.address, agent, title: t.title, cwd: terminalDirectory(t), pid: t.foreground?.pid,
           session: t.labels?.["codex.thread"] || t.labels?.["codex.session"] });
       }
       const reports = await Promise.all([...groups].map(async ([machine, targets]) => {
         try {
-          const result = await exec("python3", ["-c", this.contextReader, JSON.stringify(targets)], { on: machine });
-          return result.code === 0 ? JSON.parse(result.stdout) : {};
+          return await readCounters(targets, (script, args) => exec("sh", ["-c", script, "sh", ...args], machine ? { on: machine } : {}));
         } catch (_) { return {}; }
       }));
       const next = Object.assign({}, ...reports);
@@ -119,9 +123,19 @@ export default class BlobGarden extends View {
           pins[p.a.address] = this.pins[p.a.address] = pinAt(p.x, p.y, world);
         }
         const occupied = positionField(world, pins).placed.filter(p => !spawning.some(a => a.address === p.a.address));
+        const spots = new Map(occupied.map(p => [p.a.address, p]));
         const stepX = world.cellWidth + 36 * world.scale;
         const stepY = world.cellHeight + 28 * world.scale;
+        // Place parents first so each sub-agent can spawn beside its parent.
+        const depth = a => {
+          const seen = new Set();
+          let d = 0;
+          for (let p = a.parent; p && !seen.has(p); p = list.find(b => b.address === p)?.parent) { seen.add(p); d++; }
+          return d;
+        };
+        spawning.sort((a, b) => depth(a) - depth(b));
         for (const a of spawning) {
+          const near = spots.get(a.parent) || anchor;
           let spot;
           for (let ring = 1; !spot; ring++) {
             const offsets = [[ring, 0], [-ring, 0], [0, ring], [0, -ring]];
@@ -129,13 +143,14 @@ export default class BlobGarden extends View {
               offsets.push([ring, n], [-ring, n], [n, ring], [n, -ring]);
             }
             for (const [dx, dy] of offsets) {
-              const candidate = { x: anchor.x + dx * stepX, y: anchor.y + dy * stepY };
+              const candidate = { x: near.x + dx * stepX, y: near.y + dy * stepY };
               if (occupied.every(p => Math.abs(p.x - candidate.x) >= stepX - 0.001
                 || Math.abs(p.y - candidate.y) >= stepY - 0.001)) { spot = candidate; break; }
             }
           }
           pins[a.address] = this.pins[a.address] = pinAt(spot.x, spot.y, world);
           occupied.push(spot);
+          spots.set(a.address, spot);
         }
         if (typeof localStorage !== "undefined") localStorage.setItem("positions-v1", JSON.stringify(this.pins));
       }
@@ -194,11 +209,33 @@ export default class BlobGarden extends View {
     cx.notify();
   }
 
+  // Lost blobs come back: lay them all out around the current view, keeping pan and zoom.
+  tidy(cx) {
+    if (!this.world) return;
+    this.pins = tidyPins(this.world, this.pan, this.zoom);
+    if (typeof localStorage !== "undefined") localStorage.setItem("positions-v1", JSON.stringify(this.pins));
+    cx.notify();
+  }
+
   beginGesture(kind, event, address) {
     if (!event.position) return;
     this.suppressClick = null;
     this.gesture = { kind, address, start: event.position, pan: { ...(this.pan || { x: 0, y: 0 }) },
       offset: event.bounds ? { x: event.position.x - event.bounds.x, y: event.position.y - event.bounds.y } : { x: 0, y: 0 } };
+    // Sub-agents ride along when their parent moves.
+    const placed = this.spawnField?.placed;
+    if (kind === "blob" && placed) {
+      this.gesture.group = {};
+      for (const member of [address, ...descendants(placed, address)]) {
+        const p = placed.find(p => p.a.address === member);
+        if (p) this.gesture.group[member] = pinAt(p.x, p.y, this.spawnField);
+      }
+    }
+  }
+
+  dragging(address) {
+    const gesture = this.gesture;
+    return Boolean(gesture?.moved && (gesture.address === address || gesture.group?.[address]));
   }
 
   beginSelection(event, cx, address) {
@@ -253,6 +290,10 @@ export default class BlobGarden extends View {
       this.pins[gesture.address] = pinAt(
         (event.position.x - gesture.offset.x - event.bounds.x - (this.pan?.x || 0) - field.width / 2 * (1 - zoom)) / zoom,
         (event.position.y - gesture.offset.y - event.bounds.y - (this.pan?.y || 0) - field.height / 2 * (1 - zoom)) / zoom, field);
+      const base = gesture.group?.[gesture.address], next = this.pins[gesture.address];
+      if (base) for (const [member, pin] of Object.entries(gesture.group)) {
+        if (member !== gesture.address) this.pins[member] = { x: pin.x + next.x - base.x, y: pin.y + next.y - base.y };
+      }
       this.suppressClick = gesture.address;
     }
     cx.notify();
@@ -379,6 +420,20 @@ export default class BlobGarden extends View {
       .child(div().h(10 * scale).flex_none());
   }
 
+  // A line from parent body to sub-agent body, drawn under both and drifting with them.
+  tether(t, field) {
+    const center = p => {
+      const diameter = contextSize(p.a.demo?.context || this.context?.[p.a.address], field.scale).diameter;
+      return [p.x + field.cellWidth / 2, p.y + field.cellHeight - 92 * field.scale - diameter / 2];
+    };
+    const [x1, y1] = center(t.parent), [x2, y2] = center(t.child);
+    const path = PathBuilder.stroke(2 * field.scale).move_to(x1, y1).line_to(x2, y2).build();
+    const still = this.gesture?.kind === "selection" || this.dragging(t.parent.a.address) || this.dragging(t.child.a.address);
+    return window.paint_path(path, "#9da99c66").id(`tether-${t.child.a.address}`).absolute()
+      .left(0).top(0).w(field.width).h(field.height)
+      .when(!still, el => el.loop("left", t.drift.left).loop("top", t.drift.top));
+  }
+
   selectionMenu() {
     const { targets = [], overlay } = props();
     const t = theme();
@@ -439,8 +494,9 @@ export default class BlobGarden extends View {
         .child(this.button("next", "Next", () => run("agent.next"))));
     const pins = this.demoView(list);
     const world = arrange(list, this.fieldSize.width, this.fieldSize.height);
+    this.world = world;
     this.spawnView(list, world, pins);
-    const field = positionField(world, pins, this.pan, this.zoom);
+    const field = attachField(positionField(world, pins, this.pan, this.zoom));
     this.selection = (this.selection || []).filter(address => list.some(a => a.address === address));
     this.selectionField = field;
     setAgentOrder(field.placed.map(p => p.a.address));
@@ -463,10 +519,11 @@ export default class BlobGarden extends View {
           .on_mouse_up("left", (_event, cx) => this.endGesture(cx))
           .on_mouse_up("right", (_event, cx) => this.finishSelection(cx))
           .on_hover((inside, cx) => { if (!inside) this.endGesture(cx); })
+          .children(field.tethers.map(t => this.tether(t, field)))
           .children(field.placed.map((p, index) => this.blob(p.a, index, field.cellWidth, field.cellHeight, field.scale)
             .id(`orbit-${p.a.address}`).absolute().left(p.x).top(p.y)
             .on_mouse_down("left", (event, cx) => { cx.stop_propagation(); this.beginGesture("blob", event, p.a.address); })
-            .when(this.gesture?.kind !== "selection" && !(this.gesture?.moved && this.gesture.address === p.a.address), el => el.loop("left", p.orbit.left).loop("top", p.orbit.top))))
+            .when(this.gesture?.kind !== "selection" && !this.dragging(p.a.address), el => el.loop("left", p.orbit.left).loop("top", p.orbit.top))))
           .when(this.gesture?.kind === "selection" && this.selectionBox, el => el.child(div().absolute()
             .left(this.selectionBox.left).top(this.selectionBox.top).w(this.selectionBox.width).h(this.selectionBox.height)
             .border(1).border_color(C.working).bg("#b5d97b22")))))
@@ -482,6 +539,7 @@ export default class BlobGarden extends View {
           .when(this.selection.length > 0, el => el.child(this.button("selection-clear", `${this.selection.length} selected · Clear`, (_event, cx) => {
             this.selection = []; cx.notify();
           })))
+          .when(list.length > 0, el => el.child(this.button("tidy", "Tidy", (_event, cx) => this.tidy(cx)).tooltip("Gather every blob into the current view")))
           .child(this.button("zoom-out", "−", (_event, cx) => this.setZoom(Math.round((this.zoom - 0.1) * 100) / 100, cx)).tooltip("Zoom out · Scroll to zoom at cursor · Shift-scroll or drag background to pan"))
           .child(this.button("zoom-reset", `${Math.round(this.zoom * 100)}%`, (_event, cx) => this.resetView(cx)).tooltip("Reset zoom to fit"))
           .child(this.button("zoom-in", "+", (_event, cx) => this.setZoom(Math.round((this.zoom + 0.1) * 100) / 100, cx)).tooltip("Zoom in · Scroll to zoom at cursor"))));
