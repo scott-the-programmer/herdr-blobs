@@ -31,7 +31,9 @@ Default permission mode uses the configured launch command unchanged. Codex also
 
 Folder defaults to the focused terminal's current directory, then the space folder. Browse is local-only; remote paths can be typed. Empty model and task fields keep agent defaults and start without an initial task.
 
-Poll Codex context counters every 10 seconds through `codex.js`. It runs two `sh` scripts through Herdr's `exec` on the terminal's machine, using only `find`, `ls`, `head`, `tail`, and `grep`, and parses their output in the mod. The first lists rollout logs under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) modified in the last 30 days, newest first, with each log's `session_meta` line. Match sessions by explicit thread or session label against the session ID, or else take the newest log whose directory matches a terminal's, when no other unlabelled Codex terminal shares that directory. The second script scans at most the last 8 MiB of each matched log for the last token-count or compaction record. Used tokens are `last_token_usage.total_tokens` and the limit is `model_context_window`; a compaction with no later count reads as unknown. Return only counters. If no unique match or valid counter exists, show "Context unknown" and use the minimum blob size. Body diameter updates immediately so camera zoom keeps bodies, faces, and labels in sync.
+Poll Codex context counters every 10 seconds through `codex.js`. It runs two `sh` scripts through Herdr's `exec` on the terminal's machine, using only `find`, `ls`, `head`, `tail`, and `grep`, and parses their output in the mod. The first lists rollout logs under `$CODEX_HOME/sessions` (default `~/.codex/sessions`) modified in the last 30 days, newest first, with each log's `session_meta` line. Match sessions by explicit thread or session label against the session ID, or else take the newest log whose directory matches a terminal's, when no other unlabelled Codex terminal shares that directory. The second script scans at most the last 8 MiB of each matched log for the last token-count or compaction record. Used tokens are `last_token_usage.total_tokens` and the limit is `model_context_window`; a compaction with no later count reads as unknown. Poll Claude Code counters on the same timer through `claude.js`. Claude Code writes `sessions/<pid>.json` under `$CLAUDE_CONFIG_DIR` (default `~/.claude`) for each running process, and Herdr reports the terminal's foreground pid. One `sh` script, using only `head`, `sed`, `tail`, and `awk`, reads the session ID from that file, requires exactly one `projects/*/<session>.jsonl` transcript, and scans its last 8 MiB. `awk` prints only usage numbers, model name, and sidechain flag for assistant replies, plus a marker for each compaction boundary. Used tokens are the newest main-thread, non-synthetic reply's input, cache-creation, cache-read, and output tokens added together. Transcripts do not record the window, so the limit is 200k unless the model name contains `[1m]` or usage has passed 200k, then 1M. A compaction boundary after the last reply reads as unknown. Each reader sees only its own agent's terminals.
+
+Return only counters. If no unique match or valid counter exists, show "Context unknown" and use the minimum blob size. Body diameter updates immediately so camera zoom keeps bodies, faces, and labels in sync.
 
 Blobs blink with native eye-height loops over 4200 to 6599ms. Body-only bobbing leaves labels steady: working moves 5px over 2000ms, blocked 3px over 3000ms, done 4px over 2800ms, idle 2px over 4800ms, before scale and a seeded period offset up to 699ms. Body bobbing pauses during gestures.
 
@@ -51,6 +53,7 @@ mods/blob-garden/geometry.js
 mods/blob-garden/types.js
 mods/blob-garden/context.js
 mods/blob-garden/codex.js
+mods/blob-garden/claude.js
 mods/blob-garden/demo.js
 mods/blob-garden/positions.js
 mods/blob-workspace/mod.json
@@ -62,6 +65,13 @@ mods/blob-tabs/main.js
 mods/blob-launcher/mod.json
 mods/blob-launcher/main.js
 mods/blob-launcher/options.js
+mods/blob-files/mod.json
+mods/blob-files/main.js
+mods/blob-files/open.js
+mods/blob-files/chevron-down.svg
+mods/blob-files/chevron-right.svg
+mods/blob-files/file.svg
+mods/blob-files/folder.svg
 README.md
 RECIPE.md
 preview.png
@@ -88,13 +98,13 @@ root: column, background #101913, system title bar
       blob-main-stack: stack, weight 2
         garden-board: block, blob-garden {role: "board"}
       blob-panel: column, hidden initially, 320px, min 260px, max 700px
-        blob-panel-stack: stack, shipped files or changes mod
+        blob-panel-stack: stack, blob-files or shipped changes mod
   session: column, weight 1, min 180px, 1px #303b34 border
     session-label: block, 44px, blob-tabs
     session-terminal: block, {tab: "active"}, padding [6, 14]
 ```
 
-The layout and README both reference the single root screenshot `preview.png`. Each manifest uses `place: "none"`. The launcher manifest sets overlay width 600 and height 660. Keep the shipped mods separate from the layout. Herdr still provides its palette, notifications, and native terminal renderer.
+The layout and README both reference the single root screenshot `preview.png`. Each manifest uses `place: "none"`. The launcher manifest sets overlay width 600 and height 660. Keep the shipped mods separate from the layout. `blob-files` is a `mod.clone` of the shipped `files` mod; leave the shipped one untouched. Herdr still provides its palette, notifications, and native terminal renderer.
 
 All mods default-export a native `View`. Use `div` from `gpui-kit` and `h_flex`/`v_flex` from `gpui-base`. The launcher also uses `InputState` and `Input`.
 
@@ -135,7 +145,7 @@ Keep command construction in a pure options module. Recognize Codex and Claude b
 
 Default preserves configured argv. Explicit permission modes first remove conflicting permission flags, including separate and equals forms of valued options. An explicit model replaces existing model arguments with `--model <value>`. Keep argv as an array and pass folder and task as structured command arguments. Unsupported modes and absent agents must fail before starting a program. A task-field submit uses the same start action. Prevent double starts. Errors stay in the dialog.
 
-No bundled mod calls `fetch`. The garden runs shell commands through Herdr to read Codex session logs on each terminal's machine. Only session metadata lines and token-count records leave that machine, never session messages. Installed-agent detection and program launch use Herdr APIs. The launcher persists the selected agent in shared state under `blob-launcher.last-agent`, including selections made before cancelling. On reopening, restore it if installed; otherwise select the first installed agent.
+No bundled mod calls `fetch`. The garden runs shell commands through Herdr to read Codex session logs and Claude Code transcripts on each terminal's machine. Only session metadata lines, token-count records, and usage numbers leave that machine, never session messages. Installed-agent detection and program launch use Herdr APIs. The launcher persists the selected agent in shared state under `blob-launcher.last-agent`, including selections made before cancelling. On reopening, restore it if installed; otherwise select the first installed agent.
 
 The launcher persists each agent's last launched mode and model under `blob-launcher.last-options.<agent-key>`. Save only after dispatching a valid launch, and restore only supported modes and string models. Folder and first task are not persisted.
 
@@ -153,7 +163,9 @@ Tests cover every weighted roll, reload stability, sequential-address distributi
 
 ### Workspace controls
 
-Switch spaces from the toolbar. + Space opens the system folder picker and runs `space.new` with the chosen folder. Right-clicking a space opens a 420 by 190px confirmation dialog (`blob-workspace` role `close-space`); Remove runs `space.close` for that space, Cancel closes the dialog. Files and Changes toggle the shipped panels.
+Switch spaces from the toolbar. + Space opens the system folder picker and runs `space.new` with the chosen folder. Right-clicking a space opens a 420 by 190px confirmation dialog (`blob-workspace` role `close-space`); Remove runs `space.close` for that space, Cancel closes the dialog. Files and Changes toggle the side panels.
+
+Right-clicking a file row in `blob-files` opens a 200 by 52px popup (role `menu`) with Open in editor. It runs the platform default opener through `exec` on this machine: `open` on macOS, `xdg-open` on Linux, `cmd /c start` on Windows, so the file opens in the app a double-click would use. A failure posts an error notification. Folders get no menu. In a remote space the item is disabled, since the file lives on another machine. Keep command construction in the pure `open.js`.
 
 Worktree toggles inline New, Open, and Remove buttons. Each opens Herdr's shipped `worktree` dialog with the active space and action `new`, `open`, or `remove`, at 620 by 460px, then collapses the menu. Preserve its built-in prompts. Shell selects an existing tab named Shell or creates one.
 
@@ -167,19 +179,19 @@ Merge `keys.json` under `layout:blobs`: Ctrl+Shift+S selects Shell, F toggles Fi
 - Every mod must pass `herdr-app check`, but this only covers initial rendering. Inspect the loaded launcher after asynchronous installed-agent detection as well as all visible prop roles.
 - Active-tab terminal content fixes new shells being hidden behind an old focused agent. Pane-less descendants need explicit `terminal.show` after selecting their parent context.
 - Default means existing configuration, including any permission settings the person already chose. It is not a forced sandbox preset. YOLO is remembered when it was the last launched mode for that agent. Custom wrapper executables get no guessed flags. Remote or older agent versions must support the chosen flags; check the installed programs when adapting launch arguments.
-- Context counters currently come from Codex only and need a POSIX shell on the terminal's machine. Two unlabelled Codex terminals in one directory both show "Context unknown"; label them with `codex.thread` to tell them apart. Missing counters, ambiguous session matches, or read failures show "Context unknown". Size follows context usage and can shrink after compaction.
+- Context counters come from Codex and Claude Code and need a POSIX shell on the terminal's machine. Claude Code counters need Herdr to report the foreground pid, and a 1M window below 200k used tokens shows against 200k unless the model name says `[1m]`. Two unlabelled Codex terminals in one directory both show "Context unknown"; label them with `codex.thread` to tell them apart. Missing counters, ambiguous session matches, or read failures show "Context unknown". Size follows context usage and can shrink after compaction.
 - Very narrow windows crowd header and dialog controls. Aim for at least 760 by 600 logical pixels, with enough height for the 660px dialog. The initial arrangement reserves label space and scales down to fit. Large lists render eagerly without virtualization.
 - At 100% zoom all cells scale to fit. Large counts in small panes make labels small; zoom in and pan or expand the garden to read them. Circle diameter caps at 144px before fitting and zoom. Blobs can be dragged to reposition them. There is no filtering, close-tab button, or arbitrary argument editor. Existing Herdr keys and palette remain available.
 - Install without overwriting names. Rename incoming mods and layout references if they already exist. Copy only source and assets, not generated type files, local settings, storage, credentials, or transcripts.
 
 ## Done when
 
-1. All four bundled mods pass `herdr-app check`, and switching to blobs leaves `herdr-app status` without errors.
+1. All five bundled mods pass `herdr-app check`, and switching to blobs leaves `herdr-app status` without errors.
 2. All four states have the table's colors, face, and label. Live descendants appear; unrelated shells do not. Rounded blobs keep equal width and height at minimum and maximum context usage. The initial arrangement keeps their labels apart.
 3. Clicking a circle switches its real session into the bottom view. Existing tabs select correctly. + Terminal creates and displays a new shell tab.
 4. New agent loads installed programs, exposes supported permission modes, and starts the selected program in a fresh selected tab. The terminal switches immediately, before status reporting. A circle appears when status arrives.
 5. Folder, model, and first task reach the launch request. Switching agent or reopening restores its last launched permission mode and model. YOLO requires its explicit start action. Unsupported modes do not launch.
 6. Valid context counters control blob size and labels in every state. Missing counters show "Context unknown" at minimum size. Reload restores dragged positions and pan.
 7. `node --test tests/*.test.mjs` verifies launch arguments, permission overrides, validation, active-tab content, tab actions, full field containment, and nonoverlapping motion envelopes.
-8. Create a space with + Space, remove one through the right-click confirmation, toggle Files and Changes, and confirm the Worktree menu's New, Open, and Remove open the corresponding Herdr dialogs.
+8. Create a space with + Space, remove one through the right-click confirmation, toggle Files and Changes, right-click a file and confirm Open in editor opens it in its default app, and confirm the Worktree menu's New, Open, and Remove open the corresponding Herdr dialogs.
 9. Resize the garden and confirm every agent remains visible, inspect the empty state and loaded launcher, capture the real window as `preview.png`. Publish the folder in the public repository with topic `herdr-layout`.

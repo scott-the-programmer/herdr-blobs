@@ -18,9 +18,9 @@ Blobs bob and blink. Working blobs bob faster; idle blobs have sleepy eyes. Labe
 
 ## Workspace
 
-The space strip switches between repositories and worktrees. `+ Space` picks a folder and opens it as a new space. Right-click a space to remove it; a confirmation dialog warns that its sessions end. `Worktree` shows New, Open, and Remove, which open Herdr's worktree dialogs to create a branch checkout with its own space, switch to an existing checkout, or remove one.
+The space strip switches between repositories and worktrees. The garden shows only the active space's agents, and each space keeps its own pan and zoom. Tidy gathers the active space's blobs and leaves other spaces' positions alone. `+ Space` picks a folder and opens it as a new space. Right-click a space to remove it; a confirmation dialog warns that its sessions end. `Worktree` shows New, Open, and Remove, which open Herdr's worktree dialogs to create a branch checkout with its own space, switch to an existing checkout, or remove one.
 
-Workspace controls sit above the blobs. `Files` and `Changes` toggle panels beside them. The bottom section contains session tabs and the active terminal.
+Workspace controls sit above the blobs. `Files` and `Changes` toggle panels beside them. Right-click a file in Files and choose Open in editor to open it in its default app. The bottom section contains session tabs and the active terminal.
 
 Merge the `layout:blobs` bindings from [keys.json](keys.json) into your Herdr keys for shortcuts. Ctrl+Shift+S opens Shell, and Ctrl+Shift+F/G toggle Files/Changes. Alt+Up/Down switch spaces; Alt+Shift+Up/Down switch agents.
 
