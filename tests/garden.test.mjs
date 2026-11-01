@@ -106,6 +106,20 @@ test('dragging a blob at non-default zoom converts screen coordinates back into 
   assert.deepEqual(garden.pins.t1, pinAt(world.x, world.y, field));
 });
 
+test('dragging a blob moves it by pointer delta, whatever the mouse-down bounds say', () => {
+  const sandbox = { View: class {}, pinAt, descendants };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const field = { width: 950, height: 400, cellWidth: 160, cellHeight: 256, scale: 1 };
+  for (const bounds of [undefined, { x: -5000, y: 9000 }]) {
+    const garden = new sandbox.BlobGarden();
+    garden.zoom = 2; garden.pan = { x: 70, y: -30 }; garden.pins = {};
+    garden.spawnField = { ...field, placed: [{ a: { address: 't1' }, x: 300, y: 80 }] };
+    garden.beginGesture('blob', { position: { x: 400, y: 300 }, bounds }, 't1');
+    garden.moveGesture({ position: { x: 450, y: 320 }, bounds: { x: 24, y: 100 } }, field, { notify() {} });
+    assert.deepEqual(garden.pins.t1, pinAt(325, 90, field));
+  }
+});
+
 test('zooming out shrinks body and cell together without delayed body-size animation', () => {
   const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element,
     blobType, focused: () => null };

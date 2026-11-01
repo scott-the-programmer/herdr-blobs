@@ -224,6 +224,10 @@ export default class BlobGarden extends View {
       offset: event.bounds ? { x: event.position.x - event.bounds.x, y: event.position.y - event.bounds.y } : { x: 0, y: 0 } };
     // Sub-agents ride along when their parent moves.
     const placed = this.spawnField?.placed;
+    // Drag from the blob's settled world position by pointer delta. Mouse-down bounds are
+    // the cell mid-orbit, or missing before first paint, and made blobs jump on grab.
+    const origin = kind === "blob" && placed?.find(p => p.a.address === address);
+    if (origin) this.gesture.origin = { x: origin.x, y: origin.y };
     if (kind === "blob" && placed) {
       this.gesture.group = {};
       for (const member of [address, ...descendants(placed, address)]) {
@@ -284,12 +288,14 @@ export default class BlobGarden extends View {
       }).map(p => p.a.address);
       this.selection = [...new Set([...gesture.previous, ...hits])];
     } else if (gesture.kind === "pan") this.pan = { x: gesture.pan.x + dx, y: gesture.pan.y + dy };
-    else if (event.bounds) {
+    else if (gesture.origin || event.bounds) {
       this.pins ||= {};
       const zoom = this.zoom || 1;
-      this.pins[gesture.address] = pinAt(
-        (event.position.x - gesture.offset.x - event.bounds.x - (this.pan?.x || 0) - field.width / 2 * (1 - zoom)) / zoom,
-        (event.position.y - gesture.offset.y - event.bounds.y - (this.pan?.y || 0) - field.height / 2 * (1 - zoom)) / zoom, field);
+      this.pins[gesture.address] = gesture.origin
+        ? pinAt(gesture.origin.x + dx / zoom, gesture.origin.y + dy / zoom, field)
+        : pinAt(
+          (event.position.x - gesture.offset.x - event.bounds.x - (this.pan?.x || 0) - field.width / 2 * (1 - zoom)) / zoom,
+          (event.position.y - gesture.offset.y - event.bounds.y - (this.pan?.y || 0) - field.height / 2 * (1 - zoom)) / zoom, field);
       const base = gesture.group?.[gesture.address], next = this.pins[gesture.address];
       if (base) for (const [member, pin] of Object.entries(gesture.group)) {
         if (member !== gesture.address) this.pins[member] = { x: pin.x + next.x - base.x, y: pin.y + next.y - base.y };
