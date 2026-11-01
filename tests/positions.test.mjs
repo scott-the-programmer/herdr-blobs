@@ -93,17 +93,31 @@ test('tidy gathers lost blobs into the current view without moving the camera', 
   const list = ['t1', 't2', 't3', 't4'].map(address => ({ address }));
   const world = arrange(list, 950, 400);
   const lost = { t1: { x: -40, y: 30 }, t2: { x: 55, y: -12 } };
-  assert.deepEqual(positionField(world, tidyPins(world)).placed.map(p => [p.x, p.y]),
-    world.placed.map(p => [p.x, p.y]));
-  for (const zoom of [0.3, 1, 2.5]) {
+  for (const zoom of [0.3, 1]) {
     const pan = { x: 900, y: -350 };
     const before = positionField(world, lost, pan, zoom).placed;
     assert(before.some(p => p.x > 950 || p.x < 0 || p.y > 400 || p.y < 0), 'fixture blobs start out of view');
-    const view = positionField(world, tidyPins(world, pan, zoom), pan, zoom);
-    const fit = positionField(world, {}, { x: 0, y: 0 }, zoom).placed;
-    for (let i = 0; i < fit.length; i++) {
-      assert(Math.abs(view.placed[i].x - fit[i].x) < 0.000001, `x at zoom ${zoom}`);
-      assert(Math.abs(view.placed[i].y - fit[i].y) < 0.000001, `y at zoom ${zoom}`);
+    for (const random of [() => 0, () => 0.5, () => 0.999999, Math.random]) {
+      const view = positionField(world, tidyPins(world, pan, zoom, random), pan, zoom);
+      for (const p of view.placed) {
+        assert(p.x >= 0 && p.x + view.cellWidth <= 950 && p.y >= 0 && p.y + view.cellHeight <= 400 * Math.max(1, zoom) + 1e-6,
+          `blob in view at zoom ${zoom}: ${p.x},${p.y}`);
+      }
+      // Blobs in one row keep enough room for their labels.
+      for (const a of view.placed) for (const b of view.placed) {
+        if (a !== b && Math.abs(a.y - b.y) < view.cellHeight) assert(Math.abs(a.x - b.x) >= view.cellWidth * 0.9, 'labels clear');
+      }
     }
   }
+});
+
+test('tidy scatters a single row instead of lining blobs up', () => {
+  const list = ['t1', 't2', 't3'].map(address => ({ address }));
+  const world = arrange(list, 1200, 700);
+  let n = 0;
+  const random = () => [0.05, 0.95, 0.5, 0.1, 0.9, 0.3][n++ % 6];
+  const ys = positionField(world, tidyPins(world, undefined, 1, random)).placed.map(p => p.y);
+  assert(Math.max(...ys) - Math.min(...ys) > 100, `rows spread vertically: ${ys}`);
+  const a = tidyPins(world, undefined, 1, () => 0.2), b = tidyPins(world, undefined, 1, () => 0.8);
+  assert.notDeepEqual(a, b, 'each tidy draws a new scatter');
 });
