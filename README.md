@@ -58,30 +58,3 @@ Run regression tests:
 node --test tests/*.test.mjs
 python3 -m unittest discover -s tests -p '*_test.py'
 ```
-
-## Releases
-
-After merging changes to `main`, tag the commit you want to release and push
-the tag:
-
-```sh
-git switch main
-git pull --ff-only
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The release workflow reruns CI on the tagged commit. If all checks pass, it
-publishes a GitHub release with generated notes, `herdr-blobs-v1.0.0.zip`, and
-`SHA256SUMS`. The ZIP contains the tracked repository files under a versioned
-directory, including `layouts/` and `mods/`. Extract it and use the installation
-prompt above with the extracted directory as the source. Existing layouts and
-mods still need to be preserved during installation.
-
-Use a tag such as `v1.1.0-rc.1` to publish a prerelease. Tags must match
-`vMAJOR.MINOR.PATCH` with an optional prerelease suffix. Publishing uses the
-built-in `GITHUB_TOKEN`; no extra secrets are required.
-
-To verify a downloaded ZIP, keep it beside `SHA256SUMS` and run
-`sha256sum -c SHA256SUMS` on Linux or `shasum -a 256 -c SHA256SUMS` on macOS.
-
