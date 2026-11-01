@@ -26,7 +26,7 @@ Focus a session and click `Pin session` to keep its terminal beside your tabs. E
 
 Merge the `layout:blobs` bindings from [keys.json](keys.json) into your Herdr keys for shortcuts. Ctrl+Shift+A focuses the pinned session, Ctrl+Shift+P pins the focused session, Ctrl+Shift+R opens review, Ctrl+Shift+S opens Shell, and Ctrl+Shift+F/G toggle Files/Changes. Alt+Up/Down switch spaces; Alt+Shift+Up/Down switch agents.
 
-Workspace additions are inspired by [Bercail](https://github.com/simoncrypta/bercail). Bercail's bot, subscription setup, issue handoffs, and webhook service are separate tools and are not installed by this layout.
+Workspace additions adapt desk and review behavior from [Bercail](https://github.com/simoncrypta/bercail), under its [MIT license](THIRD_PARTY_NOTICES.md). Bercail's bot, subscription setup, issue handoffs, and webhook service are separate tools and are not installed by this layout.
 
 ## Start agents and terminals
 

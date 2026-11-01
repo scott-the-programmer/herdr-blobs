@@ -59,7 +59,7 @@ export default class BlobWorkspace extends View {
     const add = live && !kids.some(c => c.id === id) && !this.added.has(id);
     const active = kids.some(c => c.id === id) || add ? id : "blob-desk-empty";
     const hidden = !live;
-    if (add || kids.some(stale) || desk.hidden !== hidden) {
+    if (add || kids.some(stale) || Boolean(desk.hidden) !== hidden) {
       stack.children = kids.filter(c => !stale(c));
       if (add) {
         this.added.add(id);

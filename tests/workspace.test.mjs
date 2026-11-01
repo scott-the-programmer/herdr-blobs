@@ -144,6 +144,18 @@ test('auto review toggle clears queued reviews and persists choice', async () =>
   assert(!h.calls.some(([name]) => name === 'exec'));
 });
 
+test('switching space during review queues completion without stealing focus', async () => {
+  const h = setup();
+  let resolve;
+  h.execute(() => new Promise(done => { resolve = done; }));
+  const reviewing = h.workspace.review(h.spaces[0], true);
+  h.switchSpace();
+  resolve({ code: 0, stdout: ' M file.js' });
+  await reviewing;
+  assert.equal(h.workspace.pending.get('s1'), '/repo');
+  assert(!h.calls.some(([name]) => name === 'tab.new' || name === 'tab.select' || name === 'layout.show'));
+});
+
 test('space resolution supports descendants, remote addresses, and cyclic parents', () => {
   const h = setup();
   assert.equal(spaceFor('t2', h.terminals, h.panes, h.spaces).id, 's1');
