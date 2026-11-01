@@ -18,9 +18,9 @@ Blobs bob and blink. Working blobs bob faster; idle blobs have sleepy eyes. Labe
 
 The space strip switches between repositories and worktrees. `+ Worktree` creates a branch checkout and its own space. `Open worktree` switches to an existing checkout. These use Herdr's worktree dialogs.
 
-Focus a session and click `Pin session` to keep its terminal beside your tabs. Each space remembers its own pinned session. `Unpin` hides the desk without stopping the session.
+Workspace controls sit above the garden. Focus a session and click `Pin session` to keep its terminal beside the garden. Each space remembers its own pinned session. `Unpin` hides the desk without stopping the session. The bottom section contains session tabs and the active terminal.
 
-`Files` and `Changes` toggle Herdr's file browser and Git changes panel. `Review` opens `tuicr -w` when tuicr is installed, or the Changes panel otherwise. A live Review tab is reused. Manual reviews of another author's pull request use `tuicr pr` when GitHub CLI can identify it.
+`Files` and `Changes` toggle panels beside the garden. `Review` opens `tuicr -w` in the main area when tuicr is installed, or the Changes panel otherwise. A running review is reused. `Garden` returns to the blobs. Manual reviews of another author's pull request use `tuicr pr` when GitHub CLI can identify it.
 
 `Auto review on` opens review when an agent finishes with uncommitted changes. Reviews for other spaces wait until you switch there. Click the toggle to turn automatic review off. Reviews never stage, commit, push, or publish comments automatically.
 

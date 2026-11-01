@@ -115,23 +115,56 @@ test('remote completion defers until its space is shown and fallback opens Chang
   assert.equal(findNode(h.tree(), 'blob-panel').hidden, false);
 });
 
-test('review reuses live tab, avoids duplicate launches, and opens foreign PR explicitly', async () => {
+test('review reuses main-area terminal, avoids duplicate launches, and opens foreign PR explicitly', async () => {
   const h = setup();
-  h.spaces[0].tabs.push({ id: 'review', name: 'Review' });
-  h.panes.push({ tab: 'review', terminal: 'review-terminal', program: { key: 'tuicr' } });
+  h.terminals.push({ address: 'review-terminal', state: 'live', labels: { 'blob.role': 'review', 'blob.space': 's1' } });
   await h.workspace.review(h.spaces[0]);
-  assert(h.calls.some(([name, args]) => name === 'tab.select' && args.id === 'review'));
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'blob-review-review-terminal');
   assert(!h.calls.some(([name]) => name === 'tab.new'));
-  h.spaces[0].tabs.pop(); h.panes.pop(); h.calls.length = 0;
+  h.terminals.pop(); h.calls.length = 0;
   h.execute(async (cmd, args) => {
     if (cmd === 'git') return { code: 0, stdout: ' M file.js' };
     if (cmd === 'tuicr') return { code: 0, stdout: 'tuicr 1' };
+    if (cmd === 'hc') return { code: 0, stdout: '{"address":"review-new"}' };
     return { code: 0, stdout: args[0] === 'pr' ? '{"number":42,"author":{"login":"someone"}}' : 'me\n' };
   });
   await Promise.all([h.workspace.review(h.spaces[0]), h.workspace.review(h.spaces[0])]);
-  const launches = h.calls.filter(([name]) => name === 'tab.new');
+  const launches = h.calls.filter(([name, cmd]) => name === 'exec' && cmd === 'hc');
   assert.equal(launches.length, 1);
-  assert.deepEqual(Array.from(launches[0][1].argv), ['tuicr', 'pr', '42', '--no-update-check']);
+  assert.deepEqual(Array.from(launches[0][2]).slice(-4), ['tuicr', 'pr', '42', '--no-update-check']);
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'blob-review-review-new');
+  assert(!h.calls.some(([name]) => name.startsWith('tab.')));
+  await h.workspace.command('garden', h.cx);
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'garden-board');
+});
+
+test('workspace occupies main area while terminal section holds only tabs and terminal', () => {
+  const tree = JSON.parse(layoutSource), main = findNode(tree, 'blob-main'), session = findNode(tree, 'session');
+  for (const id of ['blob-workspace-toolbar', 'blob-desk', 'blob-panel', 'garden-board']) {
+    assert(findNode(main, id));
+    assert.equal(findNode(session, id), null);
+  }
+  assert.deepEqual(session.children.map(c => c.id), ['session-label', 'session-terminal']);
+});
+
+test('main-area review follows space changes and remote terminal addresses', async () => {
+  const h = setup(); h.switchSpace();
+  h.execute(async cmd => {
+    if (cmd === 'git') return { code: 0, stdout: ' M file' };
+    if (cmd === 'tuicr') return { code: 0, stdout: 'tuicr 1' };
+    if (cmd === 'hc') return { code: 0, stdout: '{"address":"t99"}' };
+    return { code: 1, stdout: '' };
+  });
+  await h.workspace.review(h.spaces[1]);
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'blob-review-remote/t99');
+  assert.equal(h.calls.find(([name, cmd]) => name === 'exec' && cmd === 'hc')[3].on, 'remote');
+  h.terminals.push({ address: 'remote/t99', state: 'live', labels: { 'blob.role': 'review', 'blob.space': 'remote/s2' } });
+  h.switchSpace(); h.workspace.syncReview(h.spaces[0]);
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'garden-board');
+  h.switchSpace(); h.workspace.syncReview(h.spaces[1]);
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'blob-review-remote/t99');
+  h.terminals.pop(); h.workspace.syncReview(h.spaces[1]);
+  assert.equal(findNode(h.tree(), 'blob-main-stack').active, 'garden-board');
 });
 
 test('auto review toggle clears queued reviews and persists choice', async () => {

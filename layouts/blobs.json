@@ -29,41 +29,13 @@
       }
     },
     {
-      "id": "garden-board",
-      "type": "block",
-      "size": {
-        "weight": 1
-      },
-      "min": 220,
-      "content": {
-        "mod": "blob-garden",
-        "props": {
-          "role": "board"
-        }
-      }
-    },
-    {
-      "id": "session",
+      "id": "blob-main",
       "type": "column",
       "size": {
         "weight": 1
       },
-      "min": 180,
-      "border": {
-        "width": 1,
-        "color": "#303b34"
-      },
+      "min": 220,
       "children": [
-        {
-          "id": "session-label",
-          "type": "block",
-          "size": {
-            "px": 44
-          },
-          "content": {
-            "mod": "blob-tabs"
-          }
-        },
         {
           "id": "blob-workspace-toolbar",
           "type": "block",
@@ -75,7 +47,7 @@
           }
         },
         {
-          "id": "session-body",
+          "id": "blob-main-body",
           "type": "row",
           "children": [
             {
@@ -124,18 +96,24 @@
               ]
             },
             {
-              "id": "session-terminal",
-              "type": "block",
-              "content": {
-                "tab": "active"
-              },
-              "padding": [
-                6,
-                14
-              ],
+              "id": "blob-main-stack",
+              "type": "stack",
               "size": {
-                "weight": 1
-              }
+                "weight": 2
+              },
+              "active": "garden-board",
+              "children": [
+                {
+                  "id": "garden-board",
+                  "type": "block",
+                  "content": {
+                    "mod": "blob-garden",
+                    "props": {
+                      "role": "board"
+                    }
+                  }
+                }
+              ]
             },
             {
               "id": "blob-panel",
@@ -171,6 +149,44 @@
               ]
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "type": "column",
+      "size": {
+        "weight": 1
+      },
+      "min": 180,
+      "border": {
+        "width": 1,
+        "color": "#303b34"
+      },
+      "children": [
+        {
+          "id": "session-label",
+          "type": "block",
+          "size": {
+            "px": 44
+          },
+          "content": {
+            "mod": "blob-tabs"
+          }
+        },
+        {
+          "id": "session-terminal",
+          "type": "block",
+          "content": {
+            "tab": "active"
+          },
+          "padding": [
+            6,
+            14
+          ],
+          "size": {
+            "weight": 1
+          }
         }
       ]
     }

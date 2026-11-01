@@ -12,6 +12,7 @@ export default class BlobWorkspace extends View {
     this.pending = new Map();
     this.reviewing = new Set();
     this.added = new Set();
+    this.reviewShown = new Set();
     this.autoReview = localStorage.getItem("auto-review") !== "false";
     try { this.pins = JSON.parse(localStorage.getItem("desks-v1") || "{}"); } catch (_) {}
     if (!this.pins || typeof this.pins !== "object" || Array.isArray(this.pins)) this.pins = {};
@@ -83,6 +84,33 @@ export default class BlobWorkspace extends View {
     run("layout.show", { id: "blob-panel" });
   }
 
+  reviewTerminal(space) {
+    return terminals().find(t => t.state === "live" && t.labels?.["blob.role"] === "review"
+      && t.labels?.["blob.space"] === space?.id);
+  }
+
+  showReview(space, address, focus = false) {
+    if (this.space()?.id !== space.id) return;
+    const tree = layout(), stack = findNode(tree, "blob-main-stack");
+    if (!stack) return;
+    const id = `blob-review-${address}`;
+    if (!stack.children.some(c => c.id === id)) {
+      stack.children.push({ id, type: "block", content: { terminal: address }, padding: [6, 14] });
+      stack.active = id;
+      run("layout.set", { layout: tree });
+    } else if (stack.active !== id) run("layout.select", { stack: stack.id, child: id });
+    this.reviewShown.add(space.id);
+    if (focus) run("pane.focus", { terminal: address });
+  }
+
+  syncReview(space) {
+    const stack = findNode(layout(), "blob-main-stack");
+    if (!stack) return;
+    const terminal = this.reviewTerminal(space);
+    if (terminal && this.reviewShown.has(space?.id)) this.showReview(space, terminal.address);
+    else if (stack.active !== "garden-board") run("layout.select", { stack: stack.id, child: "garden-board" });
+  }
+
   async review(space, automatic = false, folder = this.folder(space)) {
     if (!space || !folder || this.reviewing.has(space.id)) return;
     this.reviewing.add(space.id);
@@ -96,9 +124,9 @@ export default class BlobWorkspace extends View {
         if (automatic) this.pending.set(space.id, folder);
         return;
       }
-      const tab = spaces().find(s => s.id === space.id)?.tabs?.find(t => t.name === "Review");
-      if (tab && panes().some(p => p.tab === tab.id && p.program?.key && p.program.key !== "shell")) {
-        run("tab.select", { id: tab.id });
+      const existing = this.reviewTerminal(space);
+      if (existing) {
+        this.showReview(space, existing.address, true);
         return;
       }
       let installed = false;
@@ -121,8 +149,14 @@ export default class BlobWorkspace extends View {
         } catch (_) {}
       }
       if (this.space()?.id !== space.id) return;
-      if (tab) run("tab.close", { id: tab.id, confirmed: true });
-      run("tab.new", { space: space.id, name: "Review", folder, argv });
+      const result = await exec("hc", ["run", "--bg", "--json", "--rm", "--no-parent", "--no-notify",
+        "--cwd", folder, "--label", "blob.role=review", "--label", `blob.space=${space.id}`, "--", ...argv], options);
+      if (result.code !== 0) throw new Error(result.stderr || "Could not start review.");
+      const terminal = JSON.parse(result.stdout);
+      if (!terminal.address) throw new Error("Review did not return a terminal address.");
+      const address = space.machine && !terminal.address.includes("/") ? `${space.machine}/${terminal.address}` : terminal.address;
+      this.reviewShown.add(space.id);
+      this.showReview(space, address, true);
     } catch (error) {
       notify({ title: "Review did not open", body: String(error?.message || error), level: "error" });
     } finally { this.reviewing.delete(space.id); }
@@ -143,6 +177,7 @@ export default class BlobWorkspace extends View {
     for (const address of this.previous.keys()) if (!live.has(address)) this.previous.delete(address);
     const space = this.space();
     this.syncDesk(space);
+    this.syncReview(space);
     if (space && this.pending.has(space.id) && !this.reviewing.has(space.id)) {
       const folder = this.pending.get(space.id);
       this.pending.delete(space.id);
@@ -158,7 +193,10 @@ export default class BlobWorkspace extends View {
 
   async command(command, cx) {
     const space = this.space();
-    if (command === "pin") this.pin();
+    if (command === "garden") {
+      this.reviewShown.delete(space?.id);
+      run("layout.select", { stack: "blob-main-stack", child: "garden-board" });
+    } else if (command === "pin") this.pin();
     else if (command === "unpin" && space) {
       delete this.pins[space.id];
       localStorage.setItem("desks-v1", JSON.stringify(this.pins));
@@ -195,7 +233,7 @@ export default class BlobWorkspace extends View {
     if (props()?.role === "desk") return h_flex().size_full().px(10).items_center().justify_between()
       .bg(C.ground).text_color(C.muted).text_size(11).child("Pinned session")
       .child(div().id("unpin-session").cursor_pointer().on_click(() => run("blob-workspace.unpin")).child("Unpin"));
-    if (props()?.role === "empty") return v_flex().size_full().p(12).text_color(C.muted).child("Pin a session to keep it beside your tabs.");
+    if (props()?.role === "empty") return v_flex().size_full().p(12).text_color(C.muted).child("Pin a session to keep it beside the garden.");
     this.observe(cx);
     const space = this.space();
     return h_flex().id("blob-workspace-bar").size_full().min_w(0).px(12).gap(4).items_center().bg(C.ground).text_size(11).overflow_x_scrollbar()
@@ -204,6 +242,7 @@ export default class BlobWorkspace extends View {
           .bg(s.active ? "#28362b" : C.ground).text_color(s.active ? C.accent : C.muted)
           .cursor_pointer().on_click(() => run("space.select", { id: s.id })).child(s.name || s.folder || "Space"))))
       .child(h_flex().id("blob-workspace-tools").flex_none().gap(2).items_center()
+        .child(this.button("show-garden", "Garden", "garden"))
         .child(this.button("pin-session", "Pin session", "pin"))
         .child(this.button("review-session", "Review", "review"))
         .child(this.button("auto-review", this.autoReview ? "Auto review on" : "Auto review off", "auto-review", this.autoReview))
