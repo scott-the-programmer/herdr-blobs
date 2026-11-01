@@ -1,6 +1,6 @@
 # Blobs
 
-A dark green Herdr window shows each live agent as a blob with a face. Blobs drift, bob, and blink in a compact group. A workspace toolbar switches spaces and exposes pinned sessions, reviews, files, changes, and worktrees. Size shows context usage; color shows agent state. Click a circle to switch the bottom terminal to that session. New agent opens a launcher with permission modes, folder, model, and first task; starting one opens and selects a new tab immediately.
+Blobs is a Herdr layout for managing coding agents. Each agent appears as an animated blob, with size showing context usage and color showing status. Click a blob to open its terminal below. Workspace controls let you switch spaces, pin a session beside the garden, review changes, and manage worktrees.
 
 ![Blobs](preview.png)
 

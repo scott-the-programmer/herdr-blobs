@@ -46,10 +46,6 @@ Open [Herdr](https://herdr.dev/) and tell your agent:
 Read ~/.config/herdr-app/AGENTS.md, then install and switch to the Blobs layout from https://github.com/scott-the-programmer/herdr-blobs. Read the repository files before installing, merge its layout-specific keys, and preserve my existing layouts, mods, and keybindings.
 ```
 
-## Recipe and discovery
-
-[RECIPE.md](RECIPE.md) is the rebuild brief for this layout, including workspace controls and known limits. Herdr discovery uses this recipe, the root `preview.png`, and the repository topic `herdr-layout`.
-
 ## Tests
 
 Run regression tests:
