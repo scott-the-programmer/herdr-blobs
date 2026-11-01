@@ -10,23 +10,19 @@ Click a blob to open its session in the bottom terminal. Hover to see its name, 
 
 Drag a blob to move it. Scroll to zoom around the cursor from 10% to 400%. Drag the background or Shift-scroll to pan. The − and + buttons zoom around the viewport center; click the percentage to reset the view to fit. Pan to reach blobs outside the viewport.
 
+Sub-agents appear as blobs tied to the blob that spawned them. They spawn beside their parent, a line joins the two, and dragging the parent brings its sub-agents along.
+
 Right-drag a box to select blobs. Hold Shift to add to the selection. Right-click a selected blob or the background for group actions. Right-click an unselected blob to select it and show its actions. Kill selected asks for confirmation before ending the selected agents and their sub-agents.
 
 Blobs bob and blink. Working blobs bob faster; idle blobs have sleepy eyes. Labels stay steady. Bobbing pauses while you drag, pan, or select.
 
 ## Workspace
 
-The space strip switches between repositories and worktrees. `+ Worktree` creates a branch checkout and its own space. `Open worktree` switches to an existing checkout. These use Herdr's worktree dialogs.
+The space strip switches between repositories and worktrees. `+ Space` picks a folder and opens it as a new space. Right-click a space to remove it; a confirmation dialog warns that its sessions end. `Worktree` shows New, Open, and Remove, which open Herdr's worktree dialogs to create a branch checkout with its own space, switch to an existing checkout, or remove one.
 
-Workspace controls sit above the garden. Focus a session and click `Pin session` to keep its terminal beside the garden. Each space remembers its own pinned session. `Unpin` hides the desk without stopping the session. The bottom section contains session tabs and the active terminal.
+Workspace controls sit above the blobs. `Files` and `Changes` toggle panels beside them. The bottom section contains session tabs and the active terminal.
 
-`Files` and `Changes` toggle panels beside the garden. `Review` opens `tuicr -w` in the main area when tuicr is installed, or the Changes panel otherwise. A running review is reused. `Garden` returns to the blobs. Manual reviews of another author's pull request use `tuicr pr` when GitHub CLI can identify it.
-
-`Auto review on` opens review when an agent finishes with uncommitted changes. Reviews for other spaces wait until you switch there. Click the toggle to turn automatic review off. Reviews never stage, commit, push, or publish comments automatically.
-
-Merge the `layout:blobs` bindings from [keys.json](keys.json) into your Herdr keys for shortcuts. Ctrl+Shift+A focuses the pinned session, Ctrl+Shift+P pins the focused session, Ctrl+Shift+R opens review, Ctrl+Shift+S opens Shell, and Ctrl+Shift+F/G toggle Files/Changes. Alt+Up/Down switch spaces; Alt+Shift+Up/Down switch agents.
-
-Workspace additions adapt desk and review behavior from [Bercail](https://github.com/simoncrypta/bercail), under its [MIT license](THIRD_PARTY_NOTICES.md). Bercail's bot, subscription setup, issue handoffs, and webhook service are separate tools and are not installed by this layout.
+Merge the `layout:blobs` bindings from [keys.json](keys.json) into your Herdr keys for shortcuts. Ctrl+Shift+S opens Shell, and Ctrl+Shift+F/G toggle Files/Changes. Alt+Up/Down switch spaces; Alt+Shift+Up/Down switch agents.
 
 ## Start agents and terminals
 

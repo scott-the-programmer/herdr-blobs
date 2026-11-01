@@ -1,13 +1,13 @@
 # Blobs
 
-Blobs is a Herdr layout for managing coding agents. Each agent appears as an animated blob, with size showing context usage and color showing status. Click a blob to open its terminal below. Workspace controls let you switch spaces, pin a session beside the garden, review changes, and manage worktrees.
+Blobs is a Herdr layout for managing coding agents. Each agent appears as an animated blob, with size showing context usage and color showing status. Click a blob to open its terminal below. Workspace controls let you switch spaces, toggle Files and Changes panels, and manage worktrees.
 
 ![Blobs](preview.png)
 
 ## What you see
 
 - A 58px header on `#101913` contains a green dot, "blobs", the subtitle "Agent sessions", and New agent and Commands buttons. Keep the system title bar.
-- A 36px workspace toolbar below the header contains the space strip and Garden, Pin session, Review, Auto review, Files, Changes, and worktree controls. An optional pinned terminal sits left of the garden; an optional Files or Changes panel sits right. Review replaces the garden in the main stack.
+- A 36px workspace toolbar below the header contains the space strip with + Space, and Files, Changes, and Worktree controls. An optional Files or Changes panel sits right of the garden.
 - The garden fills the upper region with 24px horizontal padding. A 65px heading shows "Agent sessions" at 24px and the live agent count when there are zero or one agents. Above one agent, hide that title and reduce the heading to 34px, retaining the count. A 42px footer shows the four status colors and names. Use Geist, `#edf0e5` primary text, and `#9da99c` secondary text.
 - Between heading and legend, circles form a compact group with slow orbital drift. Fit every circle and label inside the measured field, scaling the group down when needed. Each has equal width and height, a round outline, and two dark eyes over a mouth. Circles start at 81px diameter and grow to 144px. Labels underneath show the agent name at 13px, the last two working-directory components at 11px, and state and context usage at 11px. Long labels truncate. Hover shows the name capped at 40 characters, then state and context usage.
 - A draggable divider separates the garden from the bottom session region. Both initially have equal weight. Garden minimum height is 220px; session minimum is 180px. The garden fits every circle and its label inside its current bounds.
@@ -23,7 +23,7 @@ Blobs is a Herdr layout for managing coding agents. Each agent appears as an ani
 | done | `#92cfc3` | "Done" label, ordinary face. Herdr turns done into idle once viewed. |
 | idle | `#a6abc3` | "Idle" label, short closed eyes. |
 
-Focused and box-selected blobs have a 3px off-white outline. Hover dims the body and shows only a short name, state, and context summary. Clicking the body focuses its session. Right-drag selects multiple bodies; Shift adds to selection. Right-click opens actions for the selection, replacing it only when clicking an unselected body. Kill selected opens a centered confirmation dialog. Confirming runs `terminal.kill {terminal: address}` once per captured address, ending those agents and their sub-agents. Cancel, Escape, or dismissing the dialog leaves them running. Descendants without panes appear too, marked Sub-agent, and open in their parent's tab when clicked. Labels themselves are informational.
+Focused and box-selected blobs have a 3px off-white outline. Hover dims the body and shows only a short name, state, and context summary. Clicking the body focuses its session. Right-drag selects multiple bodies; Shift adds to selection. Right-click opens actions for the selection, replacing it only when clicking an unselected body. Kill selected opens a centered confirmation dialog. Confirming runs `terminal.kill {terminal: address}` once per captured address, ending those agents and their sub-agents. Cancel, Escape, or dismissing the dialog leaves them running. Descendants without panes appear too, marked Sub-agent, and open in their parent's tab when clicked. A sub-agent's blob is attached to the blob that spawned it. It spawns in the nearest free slot beside its parent, a thin `#9da99c66` line joins the two bodies under both, and it drifts in step with its root ancestor. Dragging a parent moves all its descendants with it; dragging a sub-agent moves only that sub-agent and its own descendants. Labels themselves are informational.
 
 Tab clicks select that tab. + Terminal opens and selects a fresh shell tab. New agent first detects programs installed on the current space's machine. Pick an agent, mode, folder, optional model, and optional task, then press Start agent. The new tab becomes visible immediately, before status arrives. A new circle appears when the program reports status. With no space, the launcher creates a new space instead. Commands opens Herdr's palette. Existing key bindings remain intact; agent navigation follows displayed agent addresses.
 
@@ -57,7 +57,6 @@ mods/blob-workspace/mod.json
 mods/blob-workspace/main.js
 mods/blob-workspace/state.js
 keys.json
-THIRD_PARTY_NOTICES.md
 mods/blob-tabs/mod.json
 mods/blob-tabs/main.js
 mods/blob-launcher/mod.json
@@ -87,11 +86,8 @@ root: column, background #101913, system title bar
   blob-main: column, weight 1, min 220px
     blob-workspace-toolbar: block, 36px, blob-workspace
     blob-main-body: row
-      blob-desk: column, hidden initially, weight 1, min 240px
-        blob-desk-label: block, 28px, blob-workspace {role: "desk"}
-        blob-desk-stack: stack, blob-workspace {role: "empty"} or pinned terminal
       blob-main-stack: stack, weight 2
-        garden-board: block, blob-garden {role: "board"}, or review terminal
+        garden-board: block, blob-garden {role: "board"}
       blob-panel: column, hidden initially, 320px, min 260px, max 700px
         blob-panel-stack: stack, shipped files or changes mod
   session: column, weight 1, min 180px, 1px #303b34 border
@@ -140,7 +136,7 @@ Keep command construction in a pure options module. Recognize Codex and Claude b
 
 Default preserves configured argv. Explicit permission modes first remove conflicting permission flags, including separate and equals forms of valued options. An explicit model replaces existing model arguments with `--model <value>`. Keep argv as an array and pass folder and task as structured command arguments. Unsupported modes and absent agents must fail before starting a program. A task-field submit uses the same start action. Prevent double starts. Errors stay in the dialog.
 
-No bundled mod calls `fetch`. Manual review can run GitHub CLI and tuicr, which may contact GitHub. The garden reads its bundled Python helper, then runs it through Herdr to read Codex state and token-count records on each terminal's machine. The helper returns no session messages. Installed-agent detection and program launch use Herdr APIs. The launcher persists the selected agent in shared state under `blob-launcher.last-agent`, including selections made before cancelling. On reopening, restore it if installed; otherwise select the first installed agent.
+No bundled mod calls `fetch`. The garden reads its bundled Python helper, then runs it through Herdr to read Codex state and token-count records on each terminal's machine. The helper returns no session messages. Installed-agent detection and program launch use Herdr APIs. The launcher persists the selected agent in shared state under `blob-launcher.last-agent`, including selections made before cancelling. On reopening, restore it if installed; otherwise select the first installed agent.
 
 The launcher persists each agent's last launched mode and model under `blob-launcher.last-options.<agent-key>`. Save only after dispatching a valid launch, and restore only supported modes and string models. Folder and first task are not persisted.
 
@@ -158,19 +154,13 @@ Tests cover every weighted roll, reload stability, sequential-address distributi
 
 ### Workspace controls
 
-Switch spaces from the toolbar. Pin session keeps a live terminal from the active space beside the garden. Remember one pin per space in mod-local `desks-v1`; Unpin hides it without ending the session. Remove stale terminal blocks. Files and Changes toggle the shipped panels. Garden returns from review to the board while preserving the bottom active-tab terminal.
+Switch spaces from the toolbar. + Space opens the system folder picker and runs `space.new` with the chosen folder. Right-clicking a space opens a 420 by 190px confirmation dialog (`blob-workspace` role `close-space`); Remove runs `space.close` for that space, Cancel closes the dialog. Files and Changes toggle the shipped panels.
 
-Review checks Git status in the pinned or active session's folder, reuses a live review terminal for that space, and launches `tuicr -w --no-update-check` when installed. Manual review checks `gh pr view --json number,author` and `gh api user --jq .login`; for another author's PR, use `tuicr pr <number> --no-update-check`. Without tuicr, show Changes. Spawn reviews through `hc run --bg --json --rm --no-parent --no-notify` with `blob.role=review` and `blob.space=<id>` labels. Remote reviews execute on the space's machine. Keep review terminals in the main stack and defer display when the user switches spaces during asynchronous work.
+Worktree toggles inline New, Open, and Remove buttons. Each opens Herdr's shipped `worktree` dialog with the active space and action `new`, `open`, or `remove`, at 620 by 460px, then collapses the menu. Preserve its built-in prompts. Shell selects an existing tab named Shell or creates one.
 
-Auto review defaults on unless mod-local `auto-review` is false. Observe primary terminal status transitions to done, or working to idle. Review only when Git reports uncommitted changes; queue another space's review until selected. Turning auto review off clears pending work. These review actions do not automatically stage, commit, push, or post comments.
+`blob-workspace` reads `spaces` and `layout` and uses `pickFolder`, `openOverlay`, and `closeOverlay`. Use `layout.select`, `layout.show`, and `layout.hide` to update the side panel. The mod owns `nextCommand`.
 
-Worktree controls open Herdr's shipped `worktree` dialog with the active space and action `new`, `open`, or `remove`, at 620 by 460px. Preserve its built-in prompts. Shell selects an existing tab named Shell or creates one.
-
-`blob-workspace` reads `spaces`, `terminals`, `panes`, `focused`, and `layout`. Use `layout.set`, `layout.select`, `layout.show`, and `layout.hide` to update the desk, review stack, and side panel. The default role owns observation and `nextCommand`; `desk` renders the pinned-session header and `empty` renders its hint. Review failures use `notify`.
-
-Merge `keys.json` under `layout:blobs`: Ctrl+Shift+A focuses the desk, P pins, R reviews, S selects Shell, F toggles Files, and G toggles Changes. Alt+Up/Down switches spaces; Alt+Shift+Up/Down switches agents. Preserve existing user bindings when installing.
-
-Workspace behavior adapts [Bercail](https://github.com/simoncrypta/bercail). Keep its MIT attribution in `THIRD_PARTY_NOTICES.md`. Its bot and webhook services are separate and are not part of this layout.
+Merge `keys.json` under `layout:blobs`: Ctrl+Shift+S selects Shell, F toggles Files, and G toggles Changes. Alt+Up/Down switches spaces; Alt+Shift+Up/Down switches agents. Preserve existing user bindings when installing.
 
 ## Watch out
 
@@ -192,5 +182,5 @@ Workspace behavior adapts [Bercail](https://github.com/simoncrypta/bercail). Kee
 5. Folder, model, and first task reach the launch request. Switching agent or reopening restores its last launched permission mode and model. YOLO requires its explicit start action. Unsupported modes do not launch.
 6. Valid context counters control blob size and labels in every state. Missing counters show "Context unknown" at minimum size. Reload restores dragged positions and pan.
 7. `node --test tests/*.test.mjs` verifies launch arguments, permission overrides, validation, active-tab content, tab actions, full field containment, and nonoverlapping motion envelopes.
-8. Pin and unpin sessions across spaces, toggle Files and Changes, open and reuse review, verify the missing-tuicr fallback, and confirm worktree controls open the corresponding Herdr dialogs.
+8. Create a space with + Space, remove one through the right-click confirmation, toggle Files and Changes, and confirm the Worktree menu's New, Open, and Remove open the corresponding Herdr dialogs.
 9. Resize the garden and confirm every agent remains visible, inspect the empty state and loaded launcher, capture the real window as `preview.png`. Publish the folder in the public repository with topic `herdr-layout`.
