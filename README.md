@@ -2,7 +2,7 @@
 
 The Blobs layout shows each agent as a blob above its terminal. Size shows context usage; color shows whether the agent is working, blocked, done, or idle. Each address keeps its face and blob type across reloads.
 
-![Herdr Blobs showing agent sessions, context usage, and the active terminal](./preview.png?1=2)
+![Herdr Blobs showing agent sessions, context usage, and the active terminal](assets/preview.png)
 
 ## Use
 

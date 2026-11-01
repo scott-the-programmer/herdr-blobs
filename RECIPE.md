@@ -2,7 +2,7 @@
 
 Blobs is a Herdr layout for managing coding agents. Each agent appears as an animated blob, with size showing context usage and color showing status. Click a blob to open its terminal below. Workspace controls let you switch spaces, toggle Files and Changes panels, and manage worktrees.
 
-![Blobs](preview.png)
+![Blobs](assets/preview.png)
 
 ## What you see
 
