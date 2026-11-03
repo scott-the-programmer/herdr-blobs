@@ -1,6 +1,6 @@
 import { View, div, PathBuilder, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, terminals, spaces, focused, run, props, setAgentOrder, openOverlay, closeOverlay, theme, exec, nextCommand, settings } from "herdr";
+import { agents, terminals, panes, spaces, focused, run, props, setAgentOrder, openOverlay, closeOverlay, theme, exec, nextCommand, settings } from "herdr";
 import { arrange } from "./geometry.js";
 import { pinAt, positionField, attachField, descendants, tidyPins } from "./positions.js";
 import { contextSize, terminalDirectory, directoryLabel } from "./context.js";
@@ -10,8 +10,11 @@ import { blobType, TYPES } from "./types.js";
 import { demoProperties } from "./demo.js";
 import { blobName, tabRenames } from "./naming.js";
 
-const C = { ink: "#ebdbb2", muted: "#a89984", line: "#504945", ground: "#282828", working: "#b8bb26", blocked: "#fe8019", done: "#8ec07c", idle: "#83a598" };
+const C = { ink: "#ebdbb2", muted: "#a89984", line: "#504945", ground: "#282828", working: "#b8bb26", blocked: "#fe8019", done: "#8ec07c", idle: "#83a598", terminal: "#928374" };
 const WORD = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
+// The legend also names terminals, which have no agent status of their own.
+const LEGEND = { ...WORD, terminal: "Terminal" };
+const FACE_INK = "#282828";
 
 // Include descendants without panes when their parent already appears in the garden.
 // Screen pixels per canvas pixel. App zoom scales what the garden draws but not the pointer,
@@ -21,8 +24,8 @@ function screenScale(bounds, field) {
   return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
-// paint_path draws raw pixels, but layout and hit boxes shrink or grow with app zoom.
-// Path coordinates multiply by this so a star or tether lines up with its element.
+// paint_path stroke widths are raw pixels while layout follows app zoom, so strokes
+// multiply by this. Path points use percentages of the painted bounds and need no zoom.
 // Read outside render: settings() is too slow to call for every star on every frame.
 let appZoom = 1;
 function readAppZoom() {
@@ -35,6 +38,11 @@ function readAppZoom() {
   } catch (_) { return false; }
 }
 function pathZoom() { return appZoom; }
+
+function isStar(type) { return type.id === "frost" || type.id === "cosmic"; }
+
+// Terminals are not agents and have no rarity: one plain screen-shaped body.
+const TERMINAL_TYPE = { id: "terminal", name: "Terminal", rarity: "Common", accent: C.terminal };
 
 // A loop over absolute positions, rebased to offsets from `rest`.
 function drift(loop, rest) {
@@ -62,8 +70,34 @@ function liveAgents() {
     }
   }
   // A parent counts only when its blob is in the garden too.
-  return list.map(a => ({ ...a, parent: a.parent !== a.address && known.has(a.parent) ? a.parent : null,
+  const blobs = list.map(a => ({ ...a, parent: a.parent !== a.address && known.has(a.parent) ? a.parent : null,
     demo: demoProperties(all.find(t => t.address === a.address)?.labels), status: WORD[a.status] ? a.status : "idle" }));
+  return [...blobs, ...liveTerminals(all, known)];
+}
+
+// Shell and tool terminals that report no agent status. They get their own blob, with the
+// neutral "terminal" state, so the garden shows everything running in a space.
+function liveTerminals(all, known) {
+  const list = typeof panes === "function" ? panes() || [] : [];
+  if (!list.length) return [];
+  const tabs = new Map();
+  for (const s of spaces() || []) for (const tab of s.tabs || []) tabs.set(tab.id, { space: s.id, space_name: s.name || s.folder || "", tab_name: tab.name });
+  const seen = new Set();
+  const out = [];
+  for (const p of list) {
+    const address = p.terminal;
+    if (!address || p.mod || p.status || known.has(address) || seen.has(address)) continue;
+    const terminal = all.find(t => t.address === address);
+    if (!terminal || terminal.status) continue;
+    seen.add(address);
+    const where = tabs.get(p.tab) || {};
+    // Untitled terminals report their address as the title; the tab name reads better.
+    const title = [p.title, terminal.title, terminal.name, where.tab_name].find(t => t && t !== address);
+    out.push({ address, kind: "terminal", status: "terminal", title,
+      cwd: p.cwd || terminalDirectory(terminal), program: p.program || terminal.program, tab: p.tab,
+      space: where.space, space_name: where.space_name, parent: null, demo: null });
+  }
+  return out;
 }
 
 export default class BlobGarden extends View {
@@ -190,17 +224,22 @@ export default class BlobGarden extends View {
   }
 
   spawnView(list, world, pins) {
-    const previous = this.spawnField;
-    const newcomers = previous ? list.filter(a => !previous.placed.some(p => p.a.address === a.address)) : [];
+    // On the first frame there is no previous field. Unpinned blobs would then sit in grid
+    // slots that pinned blobs may already cover, so they spawn into free slots like newcomers.
+    const first = !this.spawnField;
+    const previous = this.spawnField || positionField(world, pins);
+    const newcomers = first ? list.filter(a => !pins[a.address] && list.some(b => pins[b.address]))
+      : list.filter(a => !previous.placed.some(p => p.a.address === a.address));
     const spawning = newcomers.filter(a => !pins[a.address]);
     if (spawning.length && previous.placed.length) {
       // Focus may already point at the new terminal, so use the previous active blob.
-      const anchor = previous.placed.find(p => p.a.address === this.lastActive)
-        || previous.placed.find(p => list.some(a => a.address === p.a.address));
+      const anchor = previous.placed.find(p => p.a.address === this.lastActive && pins[p.a.address])
+        || previous.placed.find(p => list.some(a => a.address === p.a.address) && (!first || pins[p.a.address]));
       if (anchor) {
         this.pins ||= {};
         for (const p of previous.placed) {
           if (!list.some(a => a.address === p.a.address) || p.a.demo?.pin && !this.pins[p.a.address]) continue;
+          if (spawning.some(a => a.address === p.a.address)) continue;
           pins[p.a.address] = this.pins[p.a.address] = pinAt(p.x, p.y, world);
         }
         const occupied = positionField(world, pins).placed.filter(p => !spawning.some(a => a.address === p.a.address));
@@ -402,14 +441,18 @@ export default class BlobGarden extends View {
   }
 
   select(address) {
+    const blob = liveAgents().find(a => a.address === address);
+    if (blob?.kind === "terminal") { run("pane.focus", { terminal: address }); return; }
     run("agent.focus", { terminal: address });
     run("pane.focus", { terminal: address });
-    if (liveAgents().find(a => a.address === address)?.child) {
+    if (blob?.child) {
       run("terminal.show", { terminal: address });
     }
   }
 
-  face(a, scale) {
+  // Logo, eyes and mouth stack in one centred column so they stay inside the silhouette.
+  // Stars have a small inner pentagon, so their face shrinks to fit it.
+  face(a, type, scale) {
     // Hash the address so reordering, resizing, and status changes preserve the face.
     let seed = 2166136261;
     for (const char of a.address) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
@@ -421,55 +464,60 @@ export default class BlobGarden extends View {
       { eyes: [[8, 12], [8, 12]], gap: 12, mouth: "smile", width: 19 },
       { eyes: [[6, 8], [8, 11]], gap: 15, mouth: "flat", width: 9 },
     ];
-    const style = styles[seed % styles.length];
-    const ink = "#282828";
+    const terminal = a.kind === "terminal";
+    const style = terminal ? { eyes: [[8, 8], [8, 8]], gap: 12, mouth: "flat", width: 12 } : styles[seed % styles.length];
+    const s = scale * (isStar(type) ? 0.72 : 1);
+    const ink = FACE_INK;
     const mouth = a.status === "blocked" ? "open" : a.status === "done" ? "smile" : style.mouth;
-    const width = (a.status === "blocked" ? 7 + seed % 4 : style.width) * scale;
-    const height = (mouth === "flat" ? 3 : mouth === "open" ? 9 : 8) * scale;
-    const lips = div().w(width).h(height).flex_none().rounded(5 * scale).bg(ink);
+    const width = (a.status === "blocked" ? 7 + seed % 4 : style.width) * s;
+    const height = (mouth === "flat" ? 3 : mouth === "open" ? 9 : 8) * s;
+    const lips = div().w(width).h(height).flex_none().rounded(5 * s).bg(ink);
     if (mouth === "smile") {
-      lips.relative().overflow_hidden().child(div().absolute().left(0).top(-3 * scale)
-        .w(width).h(8 * scale).rounded(4 * scale).bg(C[a.status]));
+      lips.relative().overflow_hidden().child(div().absolute().left(0).top(-3 * s)
+        .w(width).h(8 * s).rounded(4 * s).bg(C[a.status]));
     } else if (mouth === "open") {
-      lips.border(2 * scale).border_color(ink).bg(C[a.status]);
+      lips.border(2 * s).border_color(ink).bg(C[a.status]);
     }
-    return v_flex().size_full().items_center().justify_center().gap(7 * scale)
-      .child(h_flex().h(12 * scale).gap(style.gap * scale).items_center()
+    return v_flex().size_full().items_center().justify_center().gap(5 * s)
+      .when(isStar(type), el => el.pt(6 * s))
+      .child(this.harnessLogo(a, type, s))
+      .child(h_flex().h(12 * s).gap(style.gap * s).items_center()
         .children(style.eyes.map(([w, h], eye) => {
-          const height = (a.status === "idle" ? Math.min(h, 3) : h) * scale;
-          return div().id(`eye-${a.address}-${eye}`).w(w * scale).h(height)
-            .flex_none().rounded(5 * scale).bg(ink)
-            .loop("height", { from: height, to: Math.min(1.5 * scale, height),
+          const height = (a.status === "idle" ? Math.min(h, 3) : h) * s;
+          return div().id(`eye-${a.address}-${eye}`).w(w * s).h(height)
+            .flex_none().rounded(5 * s).bg(ink)
+            .loop("height", { from: height, to: Math.min(1.5 * s, height),
               period: 4200 + seed % 2400, easing: "ease-in" });
         })))
       .child(lips);
   }
 
-  harnessLogo(a, type, diameter, scale) {
-    const star = type.id === "frost" || type.id === "cosmic";
+  // The program's icon, on the forehead. Terminals show their shell or foreground tool.
+  harnessLogo(a, type, scale) {
     const program = a.program;
-    const path = program?.icon || "icons/agent.svg";
-    const logo = program?.tint === false ? image(path) : svg(path).text_color("#282828");
-    return h_flex().absolute().top(star ? diameter * 0.1 : 2 * scale).left(0).w_full()
-      .justify_center().child(logo.size((star ? 12 : 18) * scale).flex_none());
+    const path = program?.icon || (a.kind === "terminal" ? "icons/shell.svg" : "icons/agent.svg");
+    const logo = program?.tint === false ? image(path) : svg(path).text_color(FACE_INK);
+    return h_flex().h(16 * scale).flex_none().items_center().justify_center()
+      .child(logo.size(16 * scale).flex_none());
   }
 
   shape(body, type, diameter, scale, color, selected) {
-    if (type.id === "frost" || type.id === "cosmic") {
+    if (isStar(type)) {
       const border = (selected ? 3 : 2) * scale;
-      const zoom = pathZoom();
+      // Percentages of the painted box, so the star matches its hit box at any app zoom.
       const points = Array.from({ length: 10 }, (_, i) => {
         const angle = -Math.PI / 2 + i * Math.PI / 5;
-        const radius = (diameter - border) * (i % 2 ? 0.29 : 0.5);
-        return [(diameter / 2 + Math.cos(angle) * radius) * zoom, (diameter / 2 + Math.sin(angle) * radius) * zoom];
+        const radius = (diameter - border) / diameter * (i % 2 ? 0.29 : 0.5);
+        return [`${(0.5 + Math.cos(angle) * radius) * 100}%`, `${(0.5 + Math.sin(angle) * radius) * 100}%`];
       });
       const fill = PathBuilder.fill().add_polygon(points, true).build();
-      const outline = PathBuilder.stroke(border * zoom).add_polygon(points, true).build();
+      const outline = PathBuilder.stroke(border * pathZoom()).add_polygon(points, true).build();
       return body.bg("#00000000").border(0)
         .child(window.paint_path(fill, color).absolute().inset_0().size_full())
         .child(window.paint_path(outline, selected ? C.ink : type.accent).absolute().inset_0().size_full());
     }
     const corners = {
+      terminal: [0.2, 0.2, 0.2, 0.2],
       pebble: [0.38, 0.48, 0.32, 0.44],
       sprout: [0.48, 0.28, 0.45, 0.32],
       ripple: [0.28, 0.42, 0.28, 0.42],
@@ -482,24 +530,25 @@ export default class BlobGarden extends View {
   blob(a, index, cellWidth, cellHeight, scale, focus = focused()) {
     const context = contextSize(a.demo?.context || this.context?.[a.address], scale);
     const diameter = context.diameter;
-    const selected = focus?.agent === a.address || this.selection?.includes(a.address);
+    const selected = (a.kind === "terminal" ? focus?.terminal : focus?.agent) === a.address || this.selection?.includes(a.address);
     const color = C[a.status];
-    const type = TYPES.find(t => t.id === a.demo?.type) || blobType(a.address);
+    const terminal = a.kind === "terminal";
+    const type = terminal ? TERMINAL_TYPE : TYPES.find(t => t.id === a.demo?.type) || blobType(a.address);
     const name = blobName(a);
     // Move only the body; labels and context-sized dimensions stay fixed.
     let seed = 2166136261;
     for (const char of a.address) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
-    const motion = { working: [5, 2000], blocked: [3, 3000], done: [4, 2800], idle: [2, 4800] }[a.status] || [2, 4800];
+    const motion = { working: [5, 2000], blocked: [3, 3000], done: [4, 2800], idle: [2, 4800], terminal: [1, 5600] }[a.status] || [2, 4800];
+    const state = terminal ? `Terminal · ${a.program?.name || "shell"}` : `${WORD[a.status]} · ${context.label}`;
     return v_flex().w(cellWidth).h(cellHeight).flex_none().items_center().justify_end().gap(8 * scale)
       .child(div().id(`blob-${a.address}`).relative().w(diameter).h(diameter).flex_none().rounded(diameter / 2)
         .bg(color).border((selected ? 3 : type.rarity === "Common" ? 1 : 2) * scale).border_color(selected ? C.ink : type.rarity === "Common" ? color : type.accent)
         .map(el => this.shape(el, type, diameter, scale, color, selected))
         .cursor_pointer().hover(s => s.opacity(0.85))
-        .when(this.gesture?.kind !== "selection", el => el.tooltip(`${name.length > 40 ? name.slice(0, 39) + "…" : name}\n${WORD[a.status]} · ${context.label}`))
+        .when(this.gesture?.kind !== "selection", el => el.tooltip(`${name.length > 40 ? name.slice(0, 39) + "…" : name}\n${state}`))
         .on_click(() => { if (this.suppressClick !== a.address) this.select(a.address); })
         .on_mouse_down("right", (event, cx) => this.beginSelection(event, cx, a.address))
-        .child(this.face(a, scale).absolute().inset_0())
-        .child(this.harnessLogo(a, type, diameter, scale))
+        .child(this.face(a, type, scale).absolute().inset_0())
         .when(this.gesture?.kind !== "selection" && !this.dragging(a.address), el => el.top(0).loop("top", {
           from: 0, to: -motion[0] * scale, period: motion[1] + seed % 700
         }))
@@ -508,7 +557,7 @@ export default class BlobGarden extends View {
       .child(div().h(16 * scale).flex_none().max_w(cellWidth - 16 * scale).truncate().text_size(11 * scale).text_color(C.muted).child(`${a.child ? "Sub-agent · " : ""}${directoryLabel(a.cwd)}`))
       .child(h_flex().h(16 * scale).flex_none().max_w(cellWidth - 16 * scale).gap(6 * scale).items_center()
         .child(div().size(5 * scale).rounded(3 * scale).bg(color))
-        .child(div().truncate().text_size(11 * scale).text_color(color).child(`${WORD[a.status]} · ${context.label}`)))
+        .child(div().truncate().text_size(11 * scale).text_color(color).child(state)))
       .child(div().h(10 * scale).flex_none());
   }
 
@@ -519,8 +568,9 @@ export default class BlobGarden extends View {
       return [p.x + field.cellWidth / 2, p.y + field.cellHeight - 92 * field.scale - diameter / 2];
     };
     const [x1, y1] = center(t.parent), [x2, y2] = center(t.child);
-    const zoom = pathZoom();
-    const path = PathBuilder.stroke(2 * field.scale * zoom).move_to(x1 * zoom, y1 * zoom).line_to(x2 * zoom, y2 * zoom).build();
+    const pct = (value, size) => `${value / Math.max(1, size) * 100}%`;
+    const path = PathBuilder.stroke(2 * field.scale * pathZoom())
+      .move_to(pct(x1, field.width), pct(y1, field.height)).line_to(pct(x2, field.width), pct(y2, field.height)).build();
     return window.paint_path(path, "#a8998466").id(`tether-${t.child.a.address}`).absolute()
       .left(0).top(0).w(field.width).h(field.height)
       .when(this.gesture?.kind !== "selection", el => el.loop("left", t.drift.left).loop("top", t.drift.top));
@@ -600,12 +650,16 @@ export default class BlobGarden extends View {
     const field = attachField(positionField(world, pins, this.pan, this.zoom));
     this.selection = (this.selection || []).filter(address => list.some(a => a.address === address));
     this.selectionField = field;
-    if (!this.gesture?.moved) setAgentOrder(field.placed.map(p => p.a.address));
+    if (!this.gesture?.moved) setAgentOrder(field.placed.filter(p => p.a.kind !== "terminal").map(p => p.a.address));
+    const agentCount = list.filter(a => a.kind !== "terminal").length;
+    const terminalCount = list.length - agentCount;
+    const where = space ? list[0]?.space_name || "this space" : "your spaces";
+    const counts = `${agentCount} agent${agentCount === 1 ? "" : "s"}${terminalCount ? ` · ${terminalCount} terminal${terminalCount === 1 ? "" : "s"}` : ""} in ${where}`;
     return v_flex().id("garden-root").size_full().min_h(0).bg(C.ground).px(24)
       .child(h_flex().h(list.length > 1 ? 34 : 65).flex_none().items_center().justify_between()
         .child(v_flex().gap(4)
           .when(list.length <= 1, el => el.child(div().text_size(24).font_semibold().text_color(C.ink).child("Agent sessions")))
-          .child(div().text_size(12).text_color(C.muted).child(`${list.length} agent${list.length === 1 ? "" : "s"} in ${space ? list[0]?.space_name || "this space" : "your spaces"}`))))
+          .child(div().text_size(12).text_color(C.muted).child(counts))))
       .child(v_flex().id("garden-scroll").flex_1().min_h(0).overflow_hidden()
         .on_size_change((size, cx) => {
           // The size arrives in screen points; the canvas is laid out in app-zoomed pixels.
@@ -639,9 +693,9 @@ export default class BlobGarden extends View {
           .child(div().text_size(13).text_color(C.muted).child("Start a status-reporting agent in this space. Its blob appears here."))
           .child(this.button("start-menu", "+ New agent", () => this.newAgent())))))
       .child(h_flex().h(42).flex_none().items_center().justify_between()
-        .child(h_flex().gap(18).children(Object.keys(WORD).map(status => h_flex().gap(6).items_center()
+        .child(h_flex().gap(18).children(Object.keys(LEGEND).map(status => h_flex().gap(6).items_center()
           .child(div().size(6).rounded(3).bg(C[status]))
-          .child(div().text_size(11).text_color(C.muted).child(WORD[status])))))
+          .child(div().text_size(11).text_color(C.muted).child(LEGEND[status])))))
         .child(h_flex().gap(6).items_center()
           .when(this.selection.length > 0, el => el.child(this.button("selection-clear", `${this.selection.length} selected · Clear`, (_event, cx) => {
             this.selection = []; cx.notify();

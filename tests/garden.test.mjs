@@ -158,7 +158,7 @@ test('native body motion and blinking scale with zoom, keep identity, and pause 
   assert.equal(body.loops.top.to, -5);
   assert.equal(render(0.5).nodes[0].loops.top.to, -2.5);
   assert.equal(render(1, 8).nodes[0].loops.top.period, body.loops.top.period);
-  const eyes = body.nodes[0].nodes[0].nodes;
+  const eyes = body.nodes[0].nodes[1].nodes;
   assert.equal(eyes[0].loops.height.period, eyes[1].loops.height.period);
   assert.equal(eyes[0].loops.height.to, 1.5);
   assert(eyes[0].loops.height.from > eyes[0].loops.height.to);
@@ -166,7 +166,7 @@ test('native body motion and blinking scale with zoom, keep identity, and pause 
   const idle = render().nodes[0];
   assert.equal(idle.loops.top.to, -2);
   assert(idle.loops.top.period > body.loops.top.period);
-  assert(idle.nodes[0].nodes[0].nodes.every(eye => eye.loops.height.from <= 3));
+  assert(idle.nodes[0].nodes[1].nodes.every(eye => eye.loops.height.from <= 3));
   for (const kind of ['blob', 'pan']) {
     garden.gesture = { kind, address: 'other' };
     assert(render().nodes[0].loops.top, `${kind} gesture on another blob keeps this one bobbing`);
@@ -326,15 +326,15 @@ for (const type of TYPES) {
       if (star) {
         const points = body.nodes[0].attrs.path[0].attrs.add_polygon[0];
         assert.equal(points.length, 10);
-        assert(points.every(([x, y]) => x >= 0 && x <= body.attrs.w[0] && y >= 0 && y <= body.attrs.h[0]));
+        assert(points.flat().every(v => /%$/.test(v) && parseFloat(v) >= 0 && parseFloat(v) <= 100), 'points are percentages of the body');
         assert.equal(body.nodes[1].attrs.paint[0], type.accent);
       } else {
         assert(body.attrs.rounded_tl[0] !== body.attrs.rounded_br[0] || type.id === 'ripple');
       }
       assert(tree.nodes[1].nodes.includes('Agent'));
       assert(!tree.nodes.some(n => n.nodes?.includes(`${type.name} · ${type.rarity}`)));
-      assert.equal(body.nodes.length, star ? 4 : 2, 'silhouette, face and logo render');
-      const logo = body.nodes.at(-1).nodes[0];
+      assert.equal(body.nodes.length, star ? 3 : 1, 'silhouette and face render');
+      const logo = body.nodes.at(-1).nodes[0].nodes[0];
       assert.equal(logo.attrs.asset[0], 'icons/agent.svg');
     }
     selected = true;
@@ -349,7 +349,7 @@ for (const type of TYPES) {
   });
 }
 
-test('star path follows app zoom so it fills its hit box', () => {
+test('star path uses percentages so it fills its hit box at any app zoom', () => {
   const type = TYPES.find(t => t.id === 'cosmic');
   for (const zoom of [0.7, 1, 1.5]) {
     const sandbox = { ...native, View: class {}, contextSize, directoryLabel, terminalDirectory, pinAt, positionField, div: element, h_flex: element, v_flex: element,
@@ -358,12 +358,12 @@ test('star path follows app zoom so it fills its hit box', () => {
     sandbox.readAppZoom();
     const garden = new sandbox.BlobGarden(); garden.growth = {};
     const body = garden.blob({ address: 't1', status: 'working' }, 0, 128, 208, 1).nodes[0];
-    const size = body.attrs.w[0] * zoom;
-    const points = body.nodes[0].attrs.path[0].attrs.add_polygon[0];
+    const points = body.nodes[0].attrs.path[0].attrs.add_polygon[0].map(p => p.map(parseFloat));
     const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-    assert(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - size / 2) < 0.01, `centred at zoom ${zoom}`);
-    assert(Math.min(...ys) >= 0 && Math.max(...ys) <= size, `inside box at zoom ${zoom}`);
-    assert(Math.min(...ys) < size * 0.05, `fills box at zoom ${zoom}`);
+    assert(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - 50) < 0.01, `centred at zoom ${zoom}`);
+    assert(Math.min(...ys) >= 0 && Math.max(...ys) <= 100, `inside box at zoom ${zoom}`);
+    assert(Math.min(...ys) < 5, `fills box at zoom ${zoom}`);
+    assert.equal(body.nodes[1].attrs.path[0].attrs.strokeWidth[0], 2 * zoom, `stroke follows zoom ${zoom}`);
   }
 });
 
@@ -372,9 +372,9 @@ test('forehead uses harness icon and scales with zoom', () => {
   vm.createContext(sandbox); vm.runInContext(source, sandbox);
   const garden = new sandbox.BlobGarden();
   for (const tint of [true, false]) {
-    const logo = garden.harnessLogo({ program: { icon: 'icons/codex.svg', tint } }, TYPES[0], 108, 2).nodes[0];
+    const logo = garden.harnessLogo({ program: { icon: 'icons/codex.svg', tint } }, TYPES[0], 2).nodes[0];
     assert.equal(logo.attrs.asset[0], 'icons/codex.svg');
-    assert.equal(logo.attrs.size[0], 36);
+    assert.equal(logo.attrs.size[0], 32);
     assert.equal(Boolean(logo.attrs.text_color), tint);
   }
 });
@@ -614,4 +614,71 @@ test('a drag frame reuses host reads instead of asking the host again', () => {
   garden.gesture = null;
   garden.render();
   assert.equal(calls.agents, 2, 'reads resume once the drag ends');
+});
+
+test('shell terminals get their own blob, focus their pane, and stay out of agent navigation', async () => {
+  const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
+  const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
+  const calls = [];
+  let order = null;
+  const terms = [
+    { address: 'a1', state: 'live', status: 'working' },
+    { address: 'sh', state: 'live', title: 'zsh', cwd: '/tmp/x/y' },
+    { address: 'gone', state: 'exited' }
+  ];
+  const paneList = [
+    { pane: 'p1', terminal: 'a1', tab: 'tb1', status: 'working' },
+    { pane: 'p2', terminal: 'sh', tab: 'tb1', status: null, title: 'zsh', cwd: '/tmp/x/y', program: { name: 'zsh', icon: 'icons/shell.svg', tint: true } },
+    { pane: 'p3', terminal: null, mod: 'blob-files', tab: 'tb1', status: null },
+    { pane: 'p4', terminal: 'gone', tab: 'tb1', status: null }
+  ];
+  const sandbox = { ...native, View: class {}, pinAt, positionField, div: element, h_flex: element, v_flex: element,
+    agents: () => [{ address: 'a1', status: 'working', space: 's1', space_name: 'One', tab: 'tb1' }],
+    terminals: () => terms, panes: () => paneList,
+    spaces: () => [{ id: 's1', name: 'One', tabs: [{ id: 'tb1' }] }],
+    focused: () => ({ space: 's1', terminal: 'sh' }), props: () => ({}),
+    arrange, blobType, setAgentOrder: list => { order = list; }, run: (command, args) => calls.push({ command, ...args }) };
+  vm.createContext(sandbox);
+  vm.runInContext(source + '\nglobalThis.liveAgents = liveAgents;', sandbox);
+  const all = sandbox.liveAgents();
+  assert.equal(JSON.stringify(all.map(a => a.address)), '["a1","sh"]');
+  const shell = all.find(a => a.address === 'sh');
+  assert.equal(shell.kind, 'terminal');
+  assert.equal(shell.space, 's1');
+
+  const garden = new sandbox.BlobGarden();
+  const tree = garden.blob(shell, 0, 128, 208, 1);
+  const body = tree.nodes[0];
+  assert.equal(body.attrs.bg[0], '#928374');
+  assert.equal(body.attrs.border[0], 3, 'focused terminal is outlined');
+  assert.equal(body.nodes[0].nodes[0].nodes[0].attrs.asset[0], 'icons/shell.svg');
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  assert(flatten(tree).some(n => n.nodes?.includes('Terminal · zsh')));
+  body.attrs.on_click[0]();
+  assert.equal(JSON.stringify(calls), JSON.stringify([{ command: 'pane.focus', terminal: 'sh' }]));
+
+  garden.fieldSize = { width: 950, height: 400 };
+  const tree2 = garden.render();
+  assert.equal(JSON.stringify(order), '["a1"]');
+  assert(flatten(tree2).some(n => n.nodes?.includes('1 agent · 1 terminal in One')));
+  assert(flatten(tree2).some(n => n.nodes?.includes('Terminal')), 'legend names terminals');
+});
+
+test('on the first frame, unpinned blobs spawn clear of pinned ones', async () => {
+  const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
+  const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
+  const sandbox = { ...native, View: class {}, pinAt, positionField, focused: () => null, localStorage: { setItem() {} } };
+  vm.createContext(sandbox); vm.runInContext(source, sandbox);
+  const list = ['a', 'b', 'c'].map(address => ({ address, status: 'idle' }));
+  const world = arrange(list, 950, 400);
+  // Pin "a" exactly onto the grid slot "b" would otherwise take.
+  const slotB = world.placed.find(p => p.a.address === 'b');
+  const garden = new sandbox.BlobGarden(); garden.pins = { a: pinAt(slotB.x, slotB.y, world) };
+  garden.spawnView(list, world, { ...garden.pins });
+  const at = address => garden.spawnField.placed.find(p => p.a.address === address);
+  const stepX = world.cellWidth + 36 * world.scale, stepY = world.cellHeight + 28 * world.scale;
+  for (const [x, y] of [['a', 'b'], ['a', 'c'], ['b', 'c']]) {
+    const p = at(x), q = at(y);
+    assert(Math.abs(p.x - q.x) >= stepX - 0.01 || Math.abs(p.y - q.y) >= stepY - 0.01, `${x} and ${y} do not overlap`);
+  }
 });
