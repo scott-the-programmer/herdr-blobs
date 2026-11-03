@@ -3,7 +3,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { spaces, layout, run, props, openOverlay, closeOverlay, pickFolder, nextCommand } from "herdr";
 import { findNode } from "./state.js";
 
-const C = { ink: "#edf0e5", muted: "#9da99c", line: "#303b34", ground: "#101913", accent: "#b5d97b" };
+const C = { ink: "#ebdbb2", muted: "#a89984", line: "#504945", ground: "#282828", accent: "#b8bb26" };
 const WORKTREE_ACTIONS = [["new", "New"], ["open", "Open"], ["remove", "Remove"]];
 
 export default class BlobWorkspace extends View {
@@ -57,10 +57,10 @@ export default class BlobWorkspace extends View {
       .child(div().text_size(13).truncate().child(name))
       .child(div().text_size(12).text_color(C.muted).child("This closes the space and ends its sessions."))
       .child(h_flex().flex_1().items_end().justify_end().gap(8)
-        .child(div().id("close-space-cancel").px(9).py(5).rounded(6).cursor_pointer().hover(s => s.bg("#28362b"))
+        .child(div().id("close-space-cancel").px(12).py(7).rounded(8).border(1).border_color(C.line).text_size(12).cursor_pointer().hover(s => s.bg("#3c3836"))
           .on_click(() => closeOverlay(overlay)).child("Cancel"))
-        .child(div().id("close-space-confirm").px(9).py(5).rounded(6).cursor_pointer().text_color("#f2b477")
-          .hover(s => s.bg("#28362b")).on_click(() => {
+        .child(div().id("close-space-confirm").px(12).py(7).rounded(8).border(1).border_color(C.line).text_size(12).cursor_pointer().text_color("#fe8019")
+          .hover(s => s.bg("#3c3836")).on_click(() => {
             if (this.closing) return;
             this.closing = true;
             closeOverlay(overlay);
@@ -85,7 +85,7 @@ export default class BlobWorkspace extends View {
 
   button(id, text, command, active = false) {
     return div().id(id).flex_none().px(9).py(5).rounded(6).text_color(active ? C.accent : C.ink)
-      .cursor_pointer().hover(s => s.bg("#28362b"))
+      .cursor_pointer().hover(s => s.bg("#3c3836"))
       .on_click((_e, cx) => cx.spawn(async cx => this.command(command, cx))).child(text);
   }
 
@@ -95,7 +95,7 @@ export default class BlobWorkspace extends View {
     return h_flex().id("blob-workspace-bar").size_full().min_w(0).px(12).gap(4).items_center().bg(C.ground).text_size(11).overflow_x_scrollbar()
       .child(h_flex().id("blob-spaces").flex_1().min_w(0).gap(3).overflow_x_scrollbar()
         .children(spaces().map(s => div().id(`blob-space-${s.id}`).flex_none().px(9).py(5).rounded(6)
-          .bg(s.active ? "#28362b" : C.ground).text_color(s.active ? C.accent : C.muted)
+          .bg(s.active ? "#3c3836" : C.ground).text_color(s.active ? C.accent : C.muted)
           .cursor_pointer().on_click(() => run("space.select", { id: s.id }))
           .on_mouse_down("right", () => this.confirmClose(s)).child(s.name || s.folder || "Space")))
         .child(this.button("new-space", "+ Space", "space-new")))

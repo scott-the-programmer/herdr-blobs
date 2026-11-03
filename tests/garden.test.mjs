@@ -321,7 +321,7 @@ for (const type of TYPES) {
       const tree = garden.blob(agent, 0, 128, 208, 1);
       const body = tree.nodes[0];
       const star = ['frost', 'cosmic'].includes(type.id);
-      const color = { working: '#b5d97b', idle: '#a6abc3', done: '#92cfc3', blocked: '#f2b477' }[status];
+      const color = { working: '#b8bb26', idle: '#83a598', done: '#8ec07c', blocked: '#fe8019' }[status];
       assert.equal(star ? body.nodes[0].attrs.paint[0] : body.attrs.bg[0], color);
       if (star) {
         const points = body.nodes[0].attrs.path[0].attrs.add_polygon[0];
@@ -340,10 +340,10 @@ for (const type of TYPES) {
     selected = true;
     const body = garden.blob({ address: 't1', status: 'working' }, 0, 128, 208, 1).nodes[0];
     if (['frost', 'cosmic'].includes(type.id)) {
-      assert.equal(body.nodes[1].attrs.paint[0], '#edf0e5');
+      assert.equal(body.nodes[1].attrs.paint[0], '#ebdbb2');
       assert.equal(body.nodes[1].attrs.path[0].attrs.strokeWidth[0], 3);
     } else {
-      assert.equal(body.attrs.border_color[0], '#edf0e5');
+      assert.equal(body.attrs.border_color[0], '#ebdbb2');
       assert.equal(body.attrs.border[0], 3);
     }
   });

@@ -10,7 +10,7 @@ import { blobType, TYPES } from "./types.js";
 import { demoProperties } from "./demo.js";
 import { blobName, tabRenames } from "./naming.js";
 
-const C = { ink: "#edf0e5", muted: "#9da99c", line: "#303b34", ground: "#101913", working: "#b5d97b", blocked: "#f2b477", done: "#92cfc3", idle: "#a6abc3" };
+const C = { ink: "#ebdbb2", muted: "#a89984", line: "#504945", ground: "#282828", working: "#b8bb26", blocked: "#fe8019", done: "#8ec07c", idle: "#83a598" };
 const WORD = { working: "Working", blocked: "Needs you", done: "Done", idle: "Idle" };
 
 // Include descendants without panes when their parent already appears in the garden.
@@ -244,7 +244,7 @@ export default class BlobGarden extends View {
 
   button(id, label, action) {
     return div().id(id).px(12).py(7).rounded(8).border(1).border_color(C.line)
-      .text_size(12).text_color(C.ink).cursor_pointer().hover(s => s.bg("#28362b"))
+      .text_size(12).text_color(C.ink).cursor_pointer().hover(s => s.bg("#3c3836"))
       .on_click(action).child(label);
   }
 
@@ -422,7 +422,7 @@ export default class BlobGarden extends View {
       { eyes: [[6, 8], [8, 11]], gap: 15, mouth: "flat", width: 9 },
     ];
     const style = styles[seed % styles.length];
-    const ink = "#263325";
+    const ink = "#282828";
     const mouth = a.status === "blocked" ? "open" : a.status === "done" ? "smile" : style.mouth;
     const width = (a.status === "blocked" ? 7 + seed % 4 : style.width) * scale;
     const height = (mouth === "flat" ? 3 : mouth === "open" ? 9 : 8) * scale;
@@ -449,7 +449,7 @@ export default class BlobGarden extends View {
     const star = type.id === "frost" || type.id === "cosmic";
     const program = a.program;
     const path = program?.icon || "icons/agent.svg";
-    const logo = program?.tint === false ? image(path) : svg(path).text_color("#263325");
+    const logo = program?.tint === false ? image(path) : svg(path).text_color("#282828");
     return h_flex().absolute().top(star ? diameter * 0.1 : 2 * scale).left(0).w_full()
       .justify_center().child(logo.size((star ? 12 : 18) * scale).flex_none());
   }
@@ -521,7 +521,7 @@ export default class BlobGarden extends View {
     const [x1, y1] = center(t.parent), [x2, y2] = center(t.child);
     const zoom = pathZoom();
     const path = PathBuilder.stroke(2 * field.scale * zoom).move_to(x1 * zoom, y1 * zoom).line_to(x2 * zoom, y2 * zoom).build();
-    return window.paint_path(path, "#9da99c66").id(`tether-${t.child.a.address}`).absolute()
+    return window.paint_path(path, "#a8998466").id(`tether-${t.child.a.address}`).absolute()
       .left(0).top(0).w(field.width).h(field.height)
       .when(this.gesture?.kind !== "selection", el => el.loop("left", t.drift.left).loop("top", t.drift.top));
   }
@@ -559,7 +559,7 @@ export default class BlobGarden extends View {
           this.killing = true;
           closeOverlay(overlay);
           for (const terminal of new Set(targets.map(t => t.terminal))) run("terminal.kill", { terminal });
-        }).text_color(t.danger || "#f2b477")));
+        }).text_color(t.danger || "#fe8019")));
   }
 
   render() {
@@ -633,7 +633,7 @@ export default class BlobGarden extends View {
               .when(this.gesture?.kind !== "selection", el => el.loop("left", drift(p.orbit.left, p.x)).loop("top", drift(p.orbit.top, p.y))))))
           .when(this.gesture?.kind === "selection" && this.selectionBox, el => el.child(div().absolute()
             .left(this.selectionBox.left).top(this.selectionBox.top).w(this.selectionBox.width).h(this.selectionBox.height)
-            .border(1).border_color(C.working).bg("#b5d97b22")))))
+            .border(1).border_color(C.working).bg("#b8bb2622")))))
         .when(list.length === 0, el => el.child(v_flex().h(210).items_center().justify_center().gap(12)
           .child(div().text_size(20).text_color(C.ink).child("No agents yet"))
           .child(div().text_size(13).text_color(C.muted).child("Start a status-reporting agent in this space. Its blob appears here."))
@@ -647,6 +647,7 @@ export default class BlobGarden extends View {
             this.selection = []; cx.notify();
           })))
           .when(list.length > 0, el => el.child(this.button("tidy", "Tidy", (_event, cx) => this.tidy(cx)).tooltip("Gather every blob into the current view")))
+          .child(this.button("settings", "Settings", () => run("app.settings")).tooltip("Open Herdr settings"))
           .child(this.button("zoom-out", "−", (_event, cx) => this.setZoom(Math.round((this.zoom - 0.1) * 100) / 100, cx)).tooltip("Zoom out · Scroll to zoom at cursor · Shift-scroll or drag background to pan"))
           .child(this.button("zoom-reset", `${Math.round(this.zoom * 100)}%`, (_event, cx) => this.resetView(cx)).tooltip("Reset zoom to fit"))
           .child(this.button("zoom-in", "+", (_event, cx) => this.setZoom(Math.round((this.zoom + 0.1) * 100) / 100, cx)).tooltip("Zoom in · Scroll to zoom at cursor"))));

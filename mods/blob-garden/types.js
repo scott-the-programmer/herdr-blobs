@@ -1,11 +1,11 @@
 // Weights total 10,000: common 85%, rare 14%, ultra rare 1%.
 export const TYPES = [
-  { id: "pebble", name: "Pebble", rarity: "Common", weight: 3000, accent: "#b8c7ad", mark: "spots" },
-  { id: "sprout", name: "Sprout", rarity: "Common", weight: 2800, accent: "#b5d97b", mark: "leaves" },
-  { id: "ripple", name: "Ripple", rarity: "Common", weight: 2700, accent: "#92cfc3", mark: "ripples" },
-  { id: "ember", name: "Ember", rarity: "Rare", weight: 700, accent: "#f2b477", mark: "flame" },
-  { id: "frost", name: "Frost", rarity: "Rare", weight: 700, accent: "#b5dcf7", mark: "✦" },
-  { id: "cosmic", name: "Cosmic", rarity: "Ultra rare", weight: 100, accent: "#e7b6fa", mark: "✧ ✦ ✧" }
+  { id: "pebble", name: "Pebble", rarity: "Common", weight: 3000, accent: "#bdae93", mark: "spots" },
+  { id: "sprout", name: "Sprout", rarity: "Common", weight: 2800, accent: "#b8bb26", mark: "leaves" },
+  { id: "ripple", name: "Ripple", rarity: "Common", weight: 2700, accent: "#8ec07c", mark: "ripples" },
+  { id: "ember", name: "Ember", rarity: "Rare", weight: 700, accent: "#fe8019", mark: "flame" },
+  { id: "frost", name: "Frost", rarity: "Rare", weight: 700, accent: "#83a598", mark: "✦" },
+  { id: "cosmic", name: "Cosmic", rarity: "Ultra rare", weight: 100, accent: "#d3869b", mark: "✧ ✦ ✧" }
 ];
 
 export function typeForRoll(roll) {

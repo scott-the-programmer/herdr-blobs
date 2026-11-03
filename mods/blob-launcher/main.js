@@ -3,7 +3,7 @@ import { h_flex, v_flex, InputState, Input } from "gpui-base";
 import { spaces, focused, knownAgents, pickFolder, run, props, closeOverlay, shared, setShared } from "herdr";
 import { family, modes, launchRequest } from "./options.js";
 
-const C = { bg: "#101913", line: "#303b34", ink: "#edf0e5", muted: "#9da99c", accent: "#b5d97b" };
+const C = { bg: "#282828", line: "#504945", ink: "#ebdbb2", muted: "#a89984", accent: "#b8bb26" };
 const LAST_AGENT = "blob-launcher.last-agent";
 const LAST_OPTIONS = "blob-launcher.last-options.";
 
@@ -54,15 +54,15 @@ export default class BlobLauncher extends View {
 
   button(id, text, active, action) {
     return div().id(id).px(12).py(8).rounded(8).border(1)
-      .border_color(active ? C.accent : C.line).bg(active ? "#28362b" : C.bg)
-      .text_color(C.ink).cursor_pointer().hover(s => s.bg("#28362b"))
+      .border_color(active ? C.accent : C.line).bg(active ? "#3c3836" : C.bg)
+      .text_color(C.ink).cursor_pointer().hover(s => s.bg("#3c3836"))
       .on_click(action).child(text);
   }
 
   input(label, state) {
     return v_flex().gap(6).child(div().text_size(11).text_color(C.muted).child(label))
       .child(Input.new(state).h(36).px(10).rounded(8).border(1).border_color(C.line)
-        .bg("#131c17").text_color(C.ink).text_size(13));
+        .bg("#1d2021").text_color(C.ink).text_size(13));
   }
 
   render() {
@@ -86,7 +86,7 @@ export default class BlobLauncher extends View {
         .child(div().text_size(11).text_color(C.muted).child("Permissions"))
         .child(h_flex().gap(7).children(options.map(m => this.button(`mode-${m.id}`, m.label, m.id === this.mode,
           (_event, cx) => { this.mode = m.id; cx.notify(); }))))
-        .child(div().text_size(12).text_color(this.mode === "yolo" ? "#f2b477" : C.muted).child(mode.detail)))
+        .child(div().text_size(12).text_color(this.mode === "yolo" ? "#fe8019" : C.muted).child(mode.detail)))
       .child(h_flex().gap(8).items_end()
         .child(div().flex_1().min_w(0).child(this.input("Folder", this.folder)))
         .when(!this.space?.machine, el => el.child(this.button("pick-folder", "Browse", false, (_event, cx) => {
@@ -98,7 +98,7 @@ export default class BlobLauncher extends View {
         }))))
       .when(Boolean(family(agent)), el => el.child(this.input("Model · optional", this.model)))
       .child(this.input("First task · optional", this.task))
-      .when(Boolean(this.error), el => el.child(div().text_size(12).text_color("#f2b477").child(this.error)))
+      .when(Boolean(this.error), el => el.child(div().text_size(12).text_color("#fe8019").child(this.error)))
       .child(h_flex().justify_end().gap(8)
         .child(this.button("launch-cancel", "Cancel", false, () => closeOverlay(props().overlay)))
         .when(Boolean(agent) && !this.loading, el => el.child(this.button("launch-start",

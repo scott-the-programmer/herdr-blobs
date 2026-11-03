@@ -5,12 +5,12 @@
   "ui_font": "Geist",
   "font": "JetBrains Mono",
   "font_size": 13,
-  "background": "#101913",
+  "background": "#282828",
   "colors": {
-    "background": "#131c17",
-    "foreground": "#edf0e5",
-    "border": "#303b34",
-    "accent": "#b5d97b"
+    "background": "#1d2021",
+    "foreground": "#ebdbb2",
+    "border": "#504945",
+    "accent": "#b8bb26"
   },
   "preview": "preview.png",
   "gap": 0,
@@ -116,7 +116,7 @@
       "min": 180,
       "border": {
         "width": 1,
-        "color": "#303b34"
+        "color": "#504945"
       },
       "children": [
         {

@@ -6,24 +6,24 @@ Blobs is a Herdr layout for managing coding agents. Each agent appears as an ani
 
 ## What you see
 
-- A 58px header on `#101913` contains a green dot, "blobs", the subtitle "Agent sessions", and New agent and Commands buttons. Keep the system title bar.
+- A 58px header on `#282828` contains a green dot, "blobs", the subtitle "Agent sessions", and New agent and Commands buttons. Keep the system title bar.
 - A 36px workspace toolbar below the header contains the space strip with + Space, and Files, Changes, and Worktree controls. An optional Files or Changes panel sits right of the garden.
-- The garden fills the upper region with 24px horizontal padding. A 65px heading shows "Agent sessions" at 24px and the live agent count when there are zero or one agents. Above one agent, hide that title and reduce the heading to 34px, retaining the count. A 42px footer shows the four status colors and names. Use Geist, `#edf0e5` primary text, and `#9da99c` secondary text.
+- The garden fills the upper region with 24px horizontal padding. A 65px heading shows "Agent sessions" at 24px and the live agent count when there are zero or one agents. Above one agent, hide that title and reduce the heading to 34px, retaining the count. A 42px footer shows the four status colors and names, then Tidy (when agents exist), a Settings button that runs `app.settings`, and zoom controls. Use Geist, `#ebdbb2` primary text, and `#a89984` secondary text.
 - Between heading and legend, circles form a compact group with slow orbital drift. Fit every circle and label inside the measured field, scaling the group down when needed. Each has equal width and height, a round outline, and two dark eyes over a mouth. Circles start at 81px diameter and grow to 144px. Labels underneath show the agent name at 13px, the last two working-directory components at 11px, and state and context usage at 11px. Long labels truncate. Hover shows the name capped at 40 characters, then state and context usage.
 - A draggable divider separates the garden from the bottom session region. Both initially have equal weight. Garden minimum height is 220px; session minimum is 180px. The garden fits every circle and its label inside its current bounds.
-- A 44px tab strip heads the session. It scrolls horizontally and shows every tab in the active space. The selected tab has a green border. A fixed + Terminal button sits on the right. Below it are the active tab's real terminals, using JetBrains Mono 13px, `#131c17` background, `#edf0e5` text, and padding of 6px vertically and 14px horizontally.
+- A 44px tab strip heads the session. It scrolls horizontally and shows every tab in the active space. The selected tab has a green border. A fixed + Terminal button sits on the right. Below it are the active tab's real terminals, using JetBrains Mono 13px, `#1d2021` background, `#ebdbb2` text, and padding of 6px vertically and 14px horizontally.
 - New agent opens a centered 600 by 660px dark dialog. It has installed-agent choices, permission mode buttons and explanation, folder with local Browse button, optional model and first-task fields, Cancel, and Start agent. YOLO changes the explanation to orange and the start button to "Start in YOLO mode". Model appears only for Codex and Claude. Loading, missing-agent, and error messages occupy the agent section as needed.
 
 ## How it behaves
 
 | State | Circle color | Face and motion |
 | --- | --- | --- |
-| working | `#b5d97b` | Open eyes; opacity breathes from 0.78 to 1. |
-| blocked | `#f2b477` | "Needs you" label, open mouth. |
-| done | `#92cfc3` | "Done" label, ordinary face. Herdr turns done into idle once viewed. |
-| idle | `#a6abc3` | "Idle" label, short closed eyes. |
+| working | `#b8bb26` | Open eyes; opacity breathes from 0.78 to 1. |
+| blocked | `#fe8019` | "Needs you" label, open mouth. |
+| done | `#8ec07c` | "Done" label, ordinary face. Herdr turns done into idle once viewed. |
+| idle | `#83a598` | "Idle" label, short closed eyes. |
 
-Focused and box-selected blobs have a 3px off-white outline. Hover dims the body and shows only a short name, state, and context summary. Clicking the body focuses its session. Right-drag selects multiple bodies; Shift adds to selection. Right-click opens actions for the selection, replacing it only when clicking an unselected body. Kill selected opens a centered confirmation dialog. Confirming runs `terminal.kill {terminal: address}` once per captured address, ending those agents and their sub-agents. Cancel, Escape, or dismissing the dialog leaves them running. Descendants without panes appear too, marked Sub-agent, and open in their parent's tab when clicked. A sub-agent's blob is attached to the blob that spawned it. It spawns in the nearest free slot beside its parent, a thin `#9da99c66` line joins the two bodies under both, and it drifts in step with its root ancestor. Dragging a parent moves all its descendants with it; dragging a sub-agent moves only that sub-agent and its own descendants. Labels themselves are informational.
+Focused and box-selected blobs have a 3px cream outline. Hover dims the body and shows only a short name, state, and context summary. Clicking the body focuses its session. Right-drag selects multiple bodies; Shift adds to selection. Right-click opens actions for the selection, replacing it only when clicking an unselected body. Kill selected opens a centered confirmation dialog. Confirming runs `terminal.kill {terminal: address}` once per captured address, ending those agents and their sub-agents. Cancel, Escape, or dismissing the dialog leaves them running. Descendants without panes appear too, marked Sub-agent, and open in their parent's tab when clicked. A sub-agent's blob is attached to the blob that spawned it. It spawns in the nearest free slot beside its parent, a thin `#a8998466` line joins the two bodies under both, and it drifts in step with its root ancestor. Dragging a parent moves all its descendants with it; dragging a sub-agent moves only that sub-agent and its own descendants. Labels themselves are informational.
 
 Tab clicks select that tab. + Terminal opens and selects a fresh shell tab. New agent first detects programs installed on the current space's machine. Pick an agent, mode, folder, optional model, and optional task, then press Start agent. The new tab becomes visible immediately, before status arrives. A new circle appears when the program reports status. With no space, the launcher creates a new space instead. Commands opens Herdr's palette. Existing key bindings remain intact; agent navigation follows displayed agent addresses.
 
@@ -90,7 +90,7 @@ demo/workspace.mjs
 Use this layout tree, a moss root theme, Geist UI font, JetBrains Mono terminal font, and the explicit colors above:
 
 ```text
-root: column, background #101913, system title bar
+root: column, background #282828, system title bar
   garden-header: block, 58px, blob-garden {role: "header"}
   blob-main: column, weight 1, min 220px
     blob-workspace-toolbar: block, 36px, blob-workspace
@@ -99,7 +99,7 @@ root: column, background #101913, system title bar
         garden-board: block, blob-garden {role: "board"}
       blob-panel: column, hidden initially, 320px, min 260px, max 700px
         blob-panel-stack: stack, blob-files or shipped changes mod
-  session: column, weight 1, min 180px, 1px #303b34 border
+  session: column, weight 1, min 180px, 1px #504945 border
     session-label: block, 44px, blob-tabs
     session-terminal: block, {tab: "active"}, padding [6, 14]
 ```
@@ -124,7 +124,7 @@ Add −, percentage, and + controls beside the legend. Adjust zoom from 10% to 4
 
 Diameter is `sqrt(81 ** 2 + (144 ** 2 - 81 ** 2) * ratio) * scale`, where `ratio` is context tokens used divided by the context limit, clamped to 0 through 1. Scale the label sizes, gaps, face parts, and borders with the cell. Give the body equal width and height, `flex_none()`, and radius half its diameter so flex layout cannot flatten it.
 
-Choose one of six face styles by a stable hash of the agent address. Vary eye widths, heights and spacing, including a wink and uneven eyes, with smiling, flat or open mouths. Idle eyes flatten to at most 3px; blocked mouths become small open ovals; done mouths smile. Face color is `#263325`. Scale every face part with the blob; draw smiles and open mouths with native rounded rectangles. Update context-sized dimensions immediately and use native opacity loops.
+Choose one of six face styles by a stable hash of the agent address. Vary eye widths, heights and spacing, including a wink and uneven eyes, with smiling, flat or open mouths. Idle eyes flatten to at most 3px; blocked mouths become small open ovals; done mouths smile. Face color is `#282828`. Scale every face part with the blob; draw smiles and open mouths with native rounded rectangles. Update context-sized dimensions immediately and use native opacity loops.
 
 Only the board starts the 10-second context timer. Store dragged pins under mod-local key `positions-v1` and pan under `canvas-pan-v1`. Recover from corrupt JSON and use each callback's own `cx`.
 
@@ -155,7 +155,7 @@ Assign a type by hashing the full agent address with FNV-1a followed by avalanch
 
 Keep state colors. Give Pebble, Sprout, Ripple, and Ember distinct asymmetric corner radii; render Frost and Cosmic as five-point native vector stars. Add the agent program icon to each forehead using svg for tinted icons and image for full-color icons, falling back to icons/agent.svg. Keep the face centered, use a smaller forehead logo for stars, and show the session title below the body.
 
-Hover text has two lines. Cap the name at 40 characters, then show state and context usage. Rare types have a 2px accent outline; focused and box-selected blobs have an off-white outline following their silhouette; hover dims the body.
+Hover text has two lines. Cap the name at 40 characters, then show state and context usage. Rare types have a 2px accent outline; focused and box-selected blobs have a cream outline following their silhouette; hover dims the body.
 
 Right-drag selects intersecting blob bodies with a visible rectangle, Shift-right-drag adds, and an empty box clears selection. Pause drift during box selection. Right-click a selected blob or background opens group actions; clicking an unselected blob selects only it. Group actions open the first selected session, clear selection, or open a kill confirmation for the captured targets. Never kill on right-click or box selection. Keep existing face variations, zoom, and left-drag behavior.
 
