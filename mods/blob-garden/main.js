@@ -2,7 +2,7 @@ import { View, div, PathBuilder, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, run, props, setAgentOrder, openOverlay, closeOverlay, theme, exec, nextCommand, settings } from "herdr";
 import { arrange } from "./geometry.js";
-import { pinAt, positionField, attachField, descendants, tidyPins } from "./positions.js";
+import { pinAt, positionField, tidyPins, moonsOf, moonSpots } from "./positions.js";
 import { contextSize, terminalDirectory, directoryLabel } from "./context.js";
 import { readCounters as readCodex } from "./codex.js";
 import { readCounters as readClaude } from "./claude.js";
@@ -15,8 +15,18 @@ const WORD = { working: "Working", blocked: "Needs you", done: "Done", idle: "Id
 // The legend also names terminals, which have no agent status of their own.
 const LEGEND = { ...WORD, terminal: "Terminal" };
 const FACE_INK = "#282828";
+// Sub-agent moon diameter and the space between moons, in canvas pixels at scale 1.
+const MOON = 22;
+const MOON_GAP = 6;
+// Labels under a body: three lines, a spacer and the gaps between them.
+const LABELS = 92;
 
-// Include descendants without panes when their parent already appears in the garden.
+// Where a blob's moons go and how much height their row block adds above the labels.
+function moonLayout(count, cellWidth, scale) {
+  const { spots, height } = moonSpots(count, cellWidth - 16 * scale, MOON * scale, MOON_GAP * scale);
+  return { spots, height, extra: count ? height + 8 * scale : 0 };
+}
+
 // Screen pixels per canvas pixel. App zoom scales what the garden draws but not the pointer,
 // so pointer distances divide by this before they become canvas distances.
 function screenScale(bounds, field) {
@@ -243,19 +253,10 @@ export default class BlobGarden extends View {
           pins[p.a.address] = this.pins[p.a.address] = pinAt(p.x, p.y, world);
         }
         const occupied = positionField(world, pins).placed.filter(p => !spawning.some(a => a.address === p.a.address));
-        const spots = new Map(occupied.map(p => [p.a.address, p]));
         const stepX = world.cellWidth + 36 * world.scale;
         const stepY = world.cellHeight + 28 * world.scale;
-        // Place parents first so each sub-agent can spawn beside its parent.
-        const depth = a => {
-          const seen = new Set();
-          let d = 0;
-          for (let p = a.parent; p && !seen.has(p); p = list.find(b => b.address === p)?.parent) { seen.add(p); d++; }
-          return d;
-        };
-        spawning.sort((a, b) => depth(a) - depth(b));
         for (const a of spawning) {
-          const near = spots.get(a.parent) || anchor;
+          const near = anchor;
           let spot;
           for (let ring = 1; !spot; ring++) {
             const offsets = [[ring, 0], [-ring, 0], [0, ring], [0, -ring]];
@@ -270,7 +271,6 @@ export default class BlobGarden extends View {
           }
           pins[a.address] = this.pins[a.address] = pinAt(spot.x, spot.y, world);
           occupied.push(spot);
-          spots.set(a.address, spot);
         }
         if (typeof localStorage !== "undefined") localStorage.setItem("positions-v1", JSON.stringify(this.pins));
       }
@@ -343,24 +343,16 @@ export default class BlobGarden extends View {
     this.suppressClick = null;
     this.gesture = { kind, address, start: event.position, pan: { ...(this.pan || { x: 0, y: 0 }) },
       offset: event.bounds ? { x: event.position.x - event.bounds.x, y: event.position.y - event.bounds.y } : { x: 0, y: 0 } };
-    // Sub-agents ride along when their parent moves.
     const placed = this.spawnField?.placed;
     // Drag by pointer delta from the blob's settled world position. Mouse-down bounds are
     // missing before first paint.
     const origin = kind === "blob" && placed?.find(p => p.a.address === address);
     if (origin) this.gesture.origin = { x: origin.x, y: origin.y };
-    if (kind === "blob" && placed) {
-      this.gesture.group = {};
-      for (const member of [address, ...descendants(placed, address)]) {
-        const p = placed.find(p => p.a.address === member);
-        if (p) this.gesture.group[member] = pinAt(p.x, p.y, this.spawnField);
-      }
-    }
   }
 
   dragging(address) {
     const gesture = this.gesture;
-    return Boolean(gesture?.moved && (gesture.address === address || gesture.group?.[address]));
+    return Boolean(gesture?.moved && gesture.address === address);
   }
 
   beginSelection(event, cx, address) {
@@ -403,13 +395,19 @@ export default class BlobGarden extends View {
       const right = (Math.max(gesture.start.x, event.position.x) - event.bounds.x) / scale;
       const bottom = (Math.max(gesture.start.y, event.position.y) - event.bounds.y) / scale;
       this.selectionBox = { left, top, width: right - left, height: bottom - top };
-      const hits = (this.selectionField?.placed || []).filter(p => {
-        const view = this.selectionField;
+      const view = this.selectionField;
+      const hits = (view?.placed || []).flatMap(p => {
         const diameter = contextSize(p.a.demo?.context || this.context?.[p.a.address], view.scale).diameter;
         const x = p.x + (view.cellWidth - diameter) / 2;
-        const y = p.y + view.cellHeight - 92 * view.scale - diameter;
-        return x <= right && x + diameter >= left && y <= bottom && y + diameter >= top;
-      }).map(p => p.a.address);
+        const moons = this.moons?.get(p.a.address) || [];
+        const row = moonLayout(moons.length, view.cellWidth, view.scale);
+        const y = p.y + view.cellHeight - LABELS * view.scale - row.extra - diameter;
+        const boxes = [{ address: p.a.address, x, y, size: diameter }];
+        const size = MOON * view.scale;
+        row.spots.forEach((spot, i) => boxes.push({ address: moons[i].address,
+          x: p.x + view.cellWidth / 2 + spot.x - size / 2, y: y + diameter + 8 * view.scale + spot.y - size / 2, size }));
+        return boxes.filter(b => b.x <= right && b.x + b.size >= left && b.y <= bottom && b.y + b.size >= top).map(b => b.address);
+      });
       this.selection = [...new Set([...gesture.previous, ...hits])];
     } else if (gesture.kind === "pan") this.pan = { x: gesture.pan.x + dx, y: gesture.pan.y + dy };
     else if (gesture.origin || event.bounds) {
@@ -420,10 +418,6 @@ export default class BlobGarden extends View {
         : pinAt(
           ((event.position.x - gesture.offset.x - event.bounds.x) / scale - (this.pan?.x || 0) - field.width / 2 * (1 - zoom)) / zoom,
           ((event.position.y - gesture.offset.y - event.bounds.y) / scale - (this.pan?.y || 0) - field.height / 2 * (1 - zoom)) / zoom, field);
-      const base = gesture.group?.[gesture.address], next = this.pins[gesture.address];
-      if (base) for (const [member, pin] of Object.entries(gesture.group)) {
-        if (member !== gesture.address) this.pins[member] = { x: pin.x + next.x - base.x, y: pin.y + next.y - base.y };
-      }
       this.suppressClick = gesture.address;
     }
     cx.notify();
@@ -527,7 +521,7 @@ export default class BlobGarden extends View {
       .rounded_br(corners[2] * diameter).rounded_bl(corners[3] * diameter);
   }
 
-  blob(a, index, cellWidth, cellHeight, scale, focus = focused()) {
+  blob(a, index, cellWidth, cellHeight, scale, focus = focused(), moons = []) {
     const context = contextSize(a.demo?.context || this.context?.[a.address], scale);
     const diameter = context.diameter;
     const selected = (a.kind === "terminal" ? focus?.terminal : focus?.agent) === a.address || this.selection?.includes(a.address);
@@ -553,27 +547,39 @@ export default class BlobGarden extends View {
           from: 0, to: -motion[0] * scale, period: motion[1] + seed % 700
         }))
         .when(a.status === "working", el => el.loop("opacity", { from: 0.78, to: 1, period: 2400 + index * 160 })))
+      .when(moons.length > 0, el => {
+        const row = moonLayout(moons.length, cellWidth, scale);
+        return el.child(div().relative().w(cellWidth).h(row.height).flex_none()
+          .children(row.spots.map((spot, i) => this.moon(moons[i], cellWidth / 2 + spot.x, spot.y, scale, focus))));
+      })
       .child(div().h(18 * scale).flex_none().max_w(cellWidth - 16 * scale).truncate().text_size(13 * scale).text_color(C.ink).child(name))
-      .child(div().h(16 * scale).flex_none().max_w(cellWidth - 16 * scale).truncate().text_size(11 * scale).text_color(C.muted).child(`${a.child ? "Sub-agent · " : ""}${directoryLabel(a.cwd)}`))
+      .child(div().h(16 * scale).flex_none().max_w(cellWidth - 16 * scale).truncate().text_size(11 * scale).text_color(C.muted).child(directoryLabel(a.cwd)))
       .child(h_flex().h(16 * scale).flex_none().max_w(cellWidth - 16 * scale).gap(6 * scale).items_center()
         .child(div().size(5 * scale).rounded(3 * scale).bg(color))
         .child(div().truncate().text_size(11 * scale).text_color(color).child(state)))
       .child(div().h(10 * scale).flex_none());
   }
 
-  // A line from parent body to sub-agent body, drawn under both and drifting with them.
-  tether(t, field) {
-    const center = p => {
-      const diameter = contextSize(p.a.demo?.context || this.context?.[p.a.address], field.scale).diameter;
-      return [p.x + field.cellWidth / 2, p.y + field.cellHeight - 92 * field.scale - diameter / 2];
-    };
-    const [x1, y1] = center(t.parent), [x2, y2] = center(t.child);
-    const pct = (value, size) => `${value / Math.max(1, size) * 100}%`;
-    const path = PathBuilder.stroke(2 * field.scale * pathZoom())
-      .move_to(pct(x1, field.width), pct(y1, field.height)).line_to(pct(x2, field.width), pct(y2, field.height)).build();
-    return window.paint_path(path, "#a8998466").id(`tether-${t.child.a.address}`).absolute()
-      .left(0).top(0).w(field.width).h(field.height)
-      .when(this.gesture?.kind !== "selection", el => el.loop("left", t.drift.left).loop("top", t.drift.top));
+  // A sub-agent: a small body in a row under the blob that spawned it, with no labels. Its tooltip and
+  // colour carry the name and state; clicking opens it like any blob.
+  moon(a, centerX, centerY, scale, focus) {
+    const size = MOON * scale;
+    const selected = focus?.agent === a.address || this.selection?.includes(a.address);
+    const color = C[a.status];
+    let seed = 2166136261;
+    for (const char of a.address) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+    const name = blobName(a);
+    return div().id(`moon-${a.address}`).absolute().left(centerX - size / 2).top(centerY - size / 2)
+      .w(size).h(size).rounded(size / 2).bg(color)
+      .border((selected ? 2 : 1) * scale).border_color(selected ? C.ink : color)
+      .cursor_pointer().hover(s => s.opacity(0.85))
+      .when(this.gesture?.kind !== "selection", el => el.tooltip(`${name.length > 40 ? name.slice(0, 39) + "…" : name}\nSub-agent · ${WORD[a.status] || "Idle"}`))
+      // Pressing a moon starts a drag of its root, so a drag that ends here is not a click.
+      .on_click(() => { if (!this.suppressClick) this.select(a.address); })
+      .on_mouse_down("right", (event, cx) => this.beginSelection(event, cx, a.address))
+      .when(this.gesture?.kind !== "selection", el => el.loop("top", {
+        from: centerY - size / 2, to: centerY - size / 2 - 2 * scale, period: 1600 + seed % 900 }))
+      .when(a.status === "working", el => el.loop("opacity", { from: 0.7, to: 1, period: 1800 + seed % 600 }));
   }
 
   selectionMenu() {
@@ -642,15 +648,19 @@ export default class BlobGarden extends View {
     const space = focus?.space || null;
     this.enterSpace(space);
     const list = space ? everyone.filter(a => a.space === space) : everyone;
-    const pins = this.demoView(list);
+    // Sub-agents get no cell of their own; they ride under their root as moons.
+    const { roots, moons } = moonsOf(list);
+    this.moons = moons;
+    const pins = this.demoView(roots);
     if (this.measuredSize) this.fieldSize = { width: this.measuredSize.width / pathZoom(), height: this.measuredSize.height / pathZoom() };
-    const world = arrange(list, this.fieldSize.width, this.fieldSize.height);
+    const world = arrange(roots, this.fieldSize.width, this.fieldSize.height);
     this.world = world;
-    this.spawnView(list, world, pins);
-    const field = attachField(positionField(world, pins, this.pan, this.zoom));
+    this.spawnView(roots, world, pins);
+    const field = positionField(world, pins, this.pan, this.zoom);
     this.selection = (this.selection || []).filter(address => list.some(a => a.address === address));
     this.selectionField = field;
-    if (!this.gesture?.moved) setAgentOrder(field.placed.filter(p => p.a.kind !== "terminal").map(p => p.a.address));
+    if (!this.gesture?.moved) setAgentOrder(field.placed.flatMap(p => [p.a, ...moons.get(p.a.address) || []])
+      .filter(a => a.kind !== "terminal").map(a => a.address));
     const agentCount = list.filter(a => a.kind !== "terminal").length;
     const terminalCount = list.length - agentCount;
     const where = space ? list[0]?.space_name || "this space" : "your spaces";
@@ -676,14 +686,13 @@ export default class BlobGarden extends View {
           .on_mouse_up("left", (_event, cx) => this.endGesture(cx))
           .on_mouse_up("right", (_event, cx) => this.finishSelection(cx))
           .on_hover((inside, cx) => { if (!inside) this.endGesture(cx); })
-          .children(field.tethers.map(t => this.tether(t, field)))
           // The cell sits at its place; the orbit drifts an inner box by a few pixels. Loops
           // ignore app zoom while left/top follow it, so a loop over whole canvas positions
           // drew blobs far from where drags and hit tests put them.
           .children(field.placed.map((p, index) => div().id(`orbit-${p.a.address}`).absolute().left(p.x).top(p.y)
             .w(field.cellWidth).h(field.cellHeight)
             .on_mouse_down("left", (event, cx) => { cx.stop_propagation(); this.beginGesture("blob", event, p.a.address); })
-            .child(this.blob(p.a, index, field.cellWidth, field.cellHeight, field.scale, focus).absolute().left(0).top(0)
+            .child(this.blob(p.a, index, field.cellWidth, field.cellHeight, field.scale, focus, moons.get(p.a.address)).absolute().left(0).top(0)
               .when(this.gesture?.kind !== "selection", el => el.loop("left", drift(p.orbit.left, p.x)).loop("top", drift(p.orbit.top, p.y))))))
           .when(this.gesture?.kind === "selection" && this.selectionBox, el => el.child(div().absolute()
             .left(this.selectionBox.left).top(this.selectionBox.top).w(this.selectionBox.width).h(this.selectionBox.height)

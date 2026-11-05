@@ -58,47 +58,49 @@ export function tidyPins(field, pan = { x: 0, y: 0 }, zoom = 1, random = Math.ra
   return pins;
 }
 
-// Sub-agents drift with their root ancestor, so the tether to their parent stays attached.
-export function attachField(field) {
-  const byAddress = new Map(field.placed.map(p => [p.a.address, p]));
-  const rootOf = p => {
-    const seen = new Set([p.a.address]);
-    let root = p;
-    while (byAddress.has(root.a.parent) && !seen.has(root.a.parent)) {
-      root = byAddress.get(root.a.parent);
-      seen.add(root.a.address);
+// Split blobs into roots, which get a grid cell, and sub-agents, which ride under their root
+// as small moons. A root's moons are its descendants in depth-first order, so a sub-agent's own
+// sub-agents sit next to it. A blob caught in a parent cycle stays a root.
+export function moonsOf(list) {
+  const byAddress = new Map(list.map(a => [a.address, a]));
+  const isRoot = a => {
+    const seen = new Set([a.address]);
+    for (let p = byAddress.get(a.parent); p; p = byAddress.get(p.parent)) {
+      if (seen.has(p.address)) return p.address === a.address;
+      seen.add(p.address);
     }
-    return root;
+    return !byAddress.has(a.parent);
   };
-  const tethers = [];
-  const placed = field.placed.map(p => {
-    const parent = byAddress.get(p.a.parent);
-    if (!parent || parent === p) return p;
-    const root = rootOf(p);
-    const dx = p.x - root.x, dy = p.y - root.y;
-    const left = root.orbit.left, top = root.orbit.top;
-    tethers.push({ parent, child: p, drift: {
-      left: { ...left, from: left.from - root.x, to: left.to - root.x },
-      top: { ...top, from: top.from - root.y, to: top.to - root.y }
-    } });
-    return { ...p, root: root.a.address, orbit: {
-      left: { ...left, from: left.from + dx, to: left.to + dx },
-      top: { ...top, from: top.from + dy, to: top.to + dy }
-    } };
-  });
-  return { ...field, placed, tethers };
+  const roots = list.filter(isRoot);
+  const moons = new Map();
+  const claimed = new Set(roots.map(a => a.address));
+  for (const root of roots) {
+    const found = [];
+    const visit = address => {
+      for (const a of list) {
+        if (a.parent !== address || claimed.has(a.address)) continue;
+        claimed.add(a.address);
+        found.push(a);
+        visit(a.address);
+      }
+    };
+    visit(root.address);
+    moons.set(root.address, found);
+  }
+  return { roots, moons };
 }
 
-// Every placed blob whose parent chain reaches `address`, excluding `address` itself.
-export function descendants(placed, address) {
-  const found = new Set([address]);
-  let added = true;
-  while (added) {
-    added = false;
-    for (const p of placed) {
-      if (!found.has(p.a.address) && found.has(p.a.parent)) { found.add(p.a.address); added = true; }
-    }
+// A centred row of `count` moons under the parent body, wrapping onto more rows when they
+// outgrow `width`. Spots are centre offsets from the middle of the row block's top edge.
+export function moonSpots(count, width, size, gap) {
+  if (!count) return { spots: [], height: 0 };
+  const perRow = Math.max(1, Math.floor((width + gap) / (size + gap)));
+  const rows = Math.ceil(count / perRow);
+  const spots = [];
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / perRow), column = i % perRow;
+    const inRow = Math.min(perRow, count - row * perRow);
+    spots.push({ x: (column - (inRow - 1) / 2) * (size + gap), y: row * (size + gap) + size / 2 });
   }
-  found.delete(address);
-  return [...found];
+  return { spots, height: rows * size + (rows - 1) * gap };
 }

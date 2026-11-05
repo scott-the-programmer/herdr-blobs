@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const load = async path => import(`data:text/javascript,${encodeURIComponent(readFileSync(new URL(path, import.meta.url), 'utf8'))}`);
 const { arrange } = await load('../mods/blob-garden/geometry.js');
-const { pinAt, positionField, attachField, descendants, tidyPins } = await load('../mods/blob-garden/positions.js');
+const { pinAt, positionField, tidyPins, moonsOf, moonSpots } = await load('../mods/blob-garden/positions.js');
 
 test('dragged positions follow pointer beyond fit bounds at every camera zoom', () => {
   const world = arrange([{ address: 't1' }, { address: 't2' }], 950, 400);
@@ -60,33 +60,33 @@ test('camera zoom scales pinned and unpinned positions, spacing, and orbits toge
   }
 });
 
-test('sub-agents drift in lockstep with their root ancestor and get one tether per parent link', () => {
-  const list = [{ address: 'p' }, { address: 'c', parent: 'p' }, { address: 'g', parent: 'c' }, { address: 'solo' }];
-  const field = attachField(positionField(arrange(list, 950, 400), {}, { x: 30, y: -10 }, 0.8));
-  const at = address => field.placed.find(p => p.a.address === address);
-  const root = at('p');
-  for (const address of ['c', 'g']) {
-    const p = at(address);
-    assert.equal(p.orbit.left.period, root.orbit.left.period);
-    assert.equal(p.orbit.top.period, root.orbit.top.period);
-    assert(Math.abs(p.orbit.left.from - p.x - (root.orbit.left.from - root.x)) < 1e-9);
-    assert(Math.abs(p.orbit.top.to - p.y - (root.orbit.top.to - root.y)) < 1e-9);
-  }
-  const links = field.tethers.map(t => `${t.parent.a.address}>${t.child.a.address}`).sort();
-  assert.deepEqual(links, ['c>g', 'p>c']);
-  assert.equal(field.tethers[0].drift.left.from, root.orbit.left.from - root.x);
-  const plain = positionField(arrange(list, 950, 400), {}, { x: 30, y: -10 }, 0.8);
-  assert.deepEqual(at('solo').orbit, plain.placed.find(p => p.a.address === 'solo').orbit, 'unrelated blobs keep their own drift');
-  assert.deepEqual(descendants(field.placed, 'p').sort(), ['c', 'g']);
-  assert.deepEqual(descendants(field.placed, 'c'), ['g']);
-  assert.deepEqual(descendants(field.placed, 'solo'), []);
+test('sub-agents become moons of their root, depth first, and leave the grid', () => {
+  const list = [{ address: 'p' }, { address: 'c', parent: 'p' }, { address: 'solo' }, { address: 'g', parent: 'c' }, { address: 'c2', parent: 'p' }];
+  const { roots, moons } = moonsOf(list);
+  assert.deepEqual(roots.map(a => a.address), ['p', 'solo']);
+  assert.deepEqual(moons.get('p').map(a => a.address), ['c', 'g', 'c2'], 'a grandchild sits next to the sub-agent that spawned it');
+  assert.deepEqual(moons.get('solo'), []);
 });
 
-test('parent cycles do not hang attachment or descendant search', () => {
-  const list = [{ address: 'a', parent: 'b' }, { address: 'b', parent: 'a' }];
-  const field = attachField(positionField(arrange(list, 950, 400)));
-  assert.equal(field.tethers.length, 2);
-  assert.deepEqual(descendants(field.placed, 'a'), ['b']);
+test('parent cycles keep their blobs as roots instead of hiding them', () => {
+  const { roots, moons } = moonsOf([{ address: 'a', parent: 'b' }, { address: 'b', parent: 'a' }, { address: 'c', parent: 'a' }]);
+  assert.deepEqual(roots.map(a => a.address), ['a', 'b']);
+  assert.deepEqual([...moons.values()].flat().map(a => a.address), ['c']);
+});
+
+test('moon spots form centred rows that wrap within the width', () => {
+  const size = 22, gap = 6;
+  assert.deepEqual(moonSpots(0, 144, size, gap), { spots: [], height: 0 });
+  const one = moonSpots(1, 144, size, gap);
+  assert.deepEqual(one.spots, [{ x: 0, y: 11 }]);
+  assert.equal(one.height, 22);
+  const many = moonSpots(7, 144, size, gap);
+  const perRow = Math.floor((144 + gap) / (size + gap));
+  assert.equal(many.spots.filter(s => s.y === 11).length, perRow);
+  assert.equal(many.height, 2 * size + gap);
+  for (const s of many.spots) assert(Math.abs(s.x) + size / 2 <= 72 + 1e-9, 'every moon fits the width');
+  const second = many.spots.filter(s => s.y > 11);
+  assert(Math.abs(second.reduce((sum, s) => sum + s.x, 0)) < 1e-9, 'a short last row is centred');
 });
 
 test('tidy gathers lost blobs into the current view without moving the camera', () => {

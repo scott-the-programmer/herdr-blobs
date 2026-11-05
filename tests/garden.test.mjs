@@ -15,8 +15,8 @@ const native = {
 };
 const { contextSize, directoryLabel, terminalDirectory } = contextHelpers;
 const positionSource = readFileSync(new URL('../mods/blob-garden/positions.js', import.meta.url), 'utf8');
-const { pinAt, positionField, attachField, descendants, tidyPins } = await import(`data:text/javascript,${encodeURIComponent(positionSource)}`);
-Object.assign(native, { attachField, descendants, tidyPins });
+const { pinAt, positionField, tidyPins, moonsOf, moonSpots } = await import(`data:text/javascript,${encodeURIComponent(positionSource)}`);
+Object.assign(native, { tidyPins, moonsOf, moonSpots });
 const typeSource = readFileSync(new URL('../mods/blob-garden/types.js', import.meta.url), 'utf8');
 const { TYPES, blobType } = await import(`data:text/javascript,${encodeURIComponent(typeSource)}`);
 native.TYPES = TYPES;
@@ -110,7 +110,7 @@ test('dragging a blob at non-default zoom converts screen coordinates back into 
 });
 
 test('dragging a blob moves it by pointer delta, whatever the mouse-down bounds say', () => {
-  const sandbox = { View: class {}, pinAt, descendants };
+  const sandbox = { View: class {}, pinAt };
   vm.createContext(sandbox); vm.runInContext(source, sandbox);
   const field = { width: 950, height: 400, cellWidth: 160, cellHeight: 256, scale: 1 };
   for (const bounds of [undefined, { x: -5000, y: 9000 }]) {
@@ -178,7 +178,7 @@ test('native body motion and blinking scale with zoom, keep identity, and pause 
 });
 
 test('drag, pan, and selection divide pointer distance by app zoom', () => {
-  const sandbox = { View: class {}, pinAt, descendants };
+  const sandbox = { View: class {}, pinAt };
   vm.createContext(sandbox); vm.runInContext(source, sandbox);
   const field = { width: 950, height: 400, cellWidth: 160, cellHeight: 256, scale: 1 };
   const canvas = { x: 24, y: 100, width: 950 * 0.7, height: 400 * 0.7 };
@@ -490,7 +490,7 @@ test('new blobs spawn beside previous active blob, avoid occupied slots, and per
   assert.equal(garden.pins.demo, undefined, 'explicit demo positions keep precedence');
 });
 
-test('sub-agents record their garden parent, spawn beside it, and follow it when dragged', async () => {
+test('sub-agents render as small unlabelled moons beside their parent and ride along with it', async () => {
   const geometrySource = readFileSync(new URL('../mods/blob-garden/geometry.js', import.meta.url), 'utf8');
   const { arrange } = await import(`data:text/javascript,${encodeURIComponent(geometrySource)}`);
   const terms = [
@@ -498,43 +498,33 @@ test('sub-agents record their garden parent, spawn beside it, and follow it when
     { address: 'sub', state: 'live', parent: 'p', status: 'working' },
     { address: 'orphan', state: 'live', parent: 'gone' }
   ];
-  const saved = {};
-  const sandbox = { ...native, View: class {}, pinAt, positionField, focused: () => ({ agent: 'far' }),
+  const ran = [];
+  let order = [];
+  const sandbox = { ...native, View: class {}, div: element, h_flex: element, v_flex: element, arrange, pinAt, positionField, blobType,
+    props: () => ({ role: 'board' }), focused: () => ({ agent: 'far' }), setAgentOrder(list) { order = list; },
+    run: (command, args) => ran.push({ command, ...args }),
     agents: () => [{ address: 'p', status: 'idle' }, { address: 'far', status: 'idle' }, { address: 'orphan', status: 'idle' }],
-    terminals: () => terms, localStorage: { setItem(key, value) { saved[key] = value; } } };
+    terminals: () => terms, localStorage: { setItem() {} } };
   vm.createContext(sandbox);
   vm.runInContext(source + '\nglobalThis.liveAgents = liveAgents;', sandbox);
   const all = sandbox.liveAgents();
   assert.equal(all.find(a => a.address === 'sub').parent, 'p');
   assert.equal(all.find(a => a.address === 'orphan').parent, null, 'parents outside the garden are ignored');
 
-  const garden = new sandbox.BlobGarden(); garden.pins = {};
-  let list = all.filter(a => a.address !== 'sub');
-  const render = () => { const world = arrange(list, 950, 400); garden.spawnView(list, world, { ...garden.pins }); return world; };
-  render(); render();
-  list = all;
-  const world = render();
-  const at = address => garden.spawnField.placed.find(p => p.a.address === address);
-  const steps = (a, b) => Math.abs(a.x - b.x) / (world.cellWidth + 36 * world.scale) + Math.abs(a.y - b.y) / (world.cellHeight + 28 * world.scale);
-  assert(Math.abs(steps(at('sub'), at('p')) - 1) < 1e-6, 'sub-agent spawns beside its parent, not the active blob');
-
-  const before = { p: { ...garden.pins.p }, sub: { ...garden.pins.sub }, far: { ...garden.pins.far } };
-  const cx = { notify() {} };
-  garden.beginGesture('blob', { position: { x: 100, y: 100 }, bounds: { x: 90, y: 90 } }, 'p');
-  garden.moveGesture({ position: { x: 260, y: 180 }, bounds: { x: 0, y: 0 } }, world, cx);
-  assert(garden.dragging('sub') && !garden.dragging('far'));
-  const moved = { x: garden.pins.p.x - before.p.x, y: garden.pins.p.y - before.p.y };
-  assert(Math.abs(moved.x) > 0.01);
-  assert(Math.abs(garden.pins.sub.x - before.sub.x - moved.x) < 1e-6);
-  assert(Math.abs(garden.pins.sub.y - before.sub.y - moved.y) < 1e-6);
-  assert.deepEqual(garden.pins.far, before.far);
-  garden.endGesture(cx);
-  assert(JSON.parse(saved['positions-v1']).sub);
-
-  garden.beginGesture('blob', { position: { x: 100, y: 100 }, bounds: { x: 90, y: 90 } }, 'sub');
-  const parentPin = { ...garden.pins.p };
-  garden.moveGesture({ position: { x: 20, y: 30 }, bounds: { x: 0, y: 0 } }, world, cx);
-  assert.deepEqual(garden.pins.p, parentPin, 'dragging a sub-agent leaves its parent in place');
+  const garden = new sandbox.BlobGarden();
+  garden.fieldSize = { width: 950, height: 400 }; garden.pins = {}; garden.context = {}; garden.selection = [];
+  const flatten = node => node && typeof node === 'object' ? [node, ...node.nodes.flatMap(flatten)] : [];
+  const nodes = flatten(garden.render());
+  const cells = nodes.filter(n => /^orbit-/.test(n.attrs.id?.[0] || '')).map(n => n.attrs.id[0].slice(6)).sort();
+  assert.deepEqual(cells, ['far', 'orphan', 'p'], 'a sub-agent takes no grid cell');
+  const parent = nodes.find(n => n.attrs.id?.[0] === 'orbit-p');
+  const moon = flatten(parent).find(n => n.attrs.id?.[0] === 'moon-sub');
+  assert(moon, 'the moon renders inside its parent cell, so it drifts and drags with it');
+  assert.deepEqual(moon.nodes, [], 'moons carry no text');
+  assert(moon.attrs.w[0] < 40);
+  assert(order.indexOf('sub') === order.indexOf('p') + 1, 'agent order keeps a sub-agent after its parent');
+  moon.attrs.on_click[0]();
+  assert.deepEqual(ran.map(r => r.command), ['agent.focus', 'pane.focus', 'terminal.show']);
 });
 
 test('Tidy button gathers lost blobs into view, keeps the camera, and persists pins', async () => {
@@ -585,7 +575,8 @@ test('garden shows only the active space, with its own camera, and tidy keeps ot
   assert.deepEqual(garden.pins.b1, { x: 0.9, y: 0.9 });
 
   space = 's2';
-  assert.deepEqual(shown(), ['b1', 'sub']);
+  assert.deepEqual(shown(), ['b1']);
+  assert(flatten(garden.render()).some(n => n.attrs.id?.[0] === 'moon-sub'));
   assert.deepEqual([garden.zoom, garden.pan.x, garden.pan.y, garden.selection.length], [1, 0, 0, 0]);
   garden.pan = { x: 30, y: 40 }; garden.savePan();
 
