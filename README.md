@@ -10,7 +10,7 @@ Click a blob to open its session in the bottom terminal. Hover to see its name, 
 
 Drag a blob to move it. Scroll to zoom around the cursor from 10% to 400%. Drag the background or Shift-scroll to pan. The − and + buttons zoom around the viewport center; click the percentage to reset the view to fit. Pan to reach blobs outside the viewport.
 
-Sub-agents appear as blobs tied to the blob that spawned them. They spawn beside their parent, a line joins the two, and dragging the parent brings its sub-agents along.
+Sub-agents appear as a row of small unlabelled blobs under the blob that spawned them. They share its drift, move with it when you drag it, and show their name and state on hover.
 
 Right-drag a box to select blobs. Hold Shift to add to the selection. Right-click a selected blob or the background for group actions. Right-click an unselected blob to select it and show its actions. Kill selected asks for confirmation before ending the selected agents and their sub-agents.
 
